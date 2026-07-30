@@ -40,6 +40,14 @@ lerna-debug.log*
 .settings
 .springBeans
 .sts4-cache
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
 /nbproject/private/
 /nbbuild/
 /nbdist/
@@ -47,3 +55,7 @@ lerna-debug.log*
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
+
+### VS Code & OS ###
+.vscode/
+.DS_Store
