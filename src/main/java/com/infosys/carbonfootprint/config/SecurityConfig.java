@@ -59,8 +59,7 @@ public class SecurityConfig {
                                 // Authorization rules
                                 .authorizeHttpRequests(auth -> auth
                                                 // Public endpoints — no auth required
-                                                .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
-                                                .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                                                .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/set-password", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/upload-document", "/api/auth/documents/**").permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/").permitAll()
                                                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
 

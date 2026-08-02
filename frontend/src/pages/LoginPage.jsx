@@ -3,8 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../api';
 
 /**
- * Login page — email + password authentication.
- * On success, stores JWT token and redirects.
+ * Login page — email + password authentication with reCAPTCHA & Google OAuth.
  */
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -13,9 +12,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [captchaVerified, setCaptchaVerified] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    setError('');
+  };
+
+  const handleCaptchaToggle = () => {
+    setCaptchaVerified(!captchaVerified);
     setError('');
   };
 
@@ -23,11 +28,16 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (!captchaVerified) {
+      setError('Please complete the reCAPTCHA verification ("I\'m not a robot").');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const data = await authApi.login(form);
-      // Store JWT token
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify({
         userId: data.userId,
@@ -36,17 +46,15 @@ export default function LoginPage() {
         role: data.role,
       }));
 
-      // Redirect admin users to the admin dashboard
       if (data.role === 'ADMIN') {
         navigate('/admin');
         return;
       }
 
       setSuccess(`Welcome back, ${data.fullName}!`);
-      // Could redirect to user dashboard here
-      // navigate('/dashboard');
     } catch (err) {
       setError(err.message);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
     }
@@ -59,6 +67,7 @@ export default function LoginPage() {
     const role = params.get('role');
     const name = params.get('name');
     const status = params.get('status');
+    const oauthError = params.get('error');
 
     if (token) {
       localStorage.setItem('token', token);
@@ -69,18 +78,28 @@ export default function LoginPage() {
         setSuccess(`Welcome back, ${name || 'User'}!`);
       }
     } else if (status === 'pending') {
-      setError('Your Google registration was successful! Your account is pending admin approval.');
+      setError('Your registration was successful! Your account is pending admin approval.');
     } else if (status === 'rejected') {
       setError('Your account registration has been rejected.');
+    } else if (oauthError) {
+      setError('Google Sign-In Error: Invalid Client Credentials.');
     }
+    window.onLoginCaptchaSuccess = (token) => {
+      setCaptchaVerified(true);
+      setError('');
+    };
+    window.onLoginCaptchaExpired = () => {
+      setCaptchaVerified(false);
+    };
   }, [navigate]);
 
-  const handleGoogleLogin = () => {
+  const handleGoogleClick = () => {
     window.location.href = 'http://localhost:8080/oauth2/authorization/google';
   };
 
   const handleAdminQuickLogin = async () => {
     setForm({ email: 'admin@carbonfootprint.com', password: 'admin123' });
+    setCaptchaVerified(true);
     setLoading(true);
     setError('');
     try {
@@ -183,7 +202,12 @@ export default function LoginPage() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="login-password">Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+              <label className="form-label" htmlFor="login-password" style={{ margin: 0 }}>Password</label>
+              <Link to="/forgot-password" style={{ fontSize: '0.8125rem', color: '#38bdf8', textDecoration: 'none', fontWeight: 500 }}>
+                Forgot password?
+              </Link>
+            </div>
             <div className="password-wrapper">
               <input
                 id="login-password"
@@ -218,6 +242,17 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Official Google reCAPTCHA v2 Widget */}
+          <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'center' }}>
+            <div
+              className="g-recaptcha"
+              data-sitekey="6LcTyHEtAAAAACYHIrgr0EaW2-2M2ntyoIjtbuwP"
+              data-callback="onLoginCaptchaSuccess"
+              data-expired-callback="onLoginCaptchaExpired"
+              data-theme="dark"
+            />
+          </div>
+
           <button type="submit" className="btn-submit" disabled={loading}>
             {loading && <span className="spinner"></span>}
             {loading ? 'Signing In...' : 'Sign In'}
@@ -230,7 +265,7 @@ export default function LoginPage() {
         </div>
 
         {/* Google OAuth Button */}
-        <button type="button" className="btn-google" onClick={handleGoogleLogin}>
+        <button type="button" className="btn-google" onClick={handleGoogleClick}>
           <svg className="google-icon" viewBox="0 0 24 24">
             <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z" />
             <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />

@@ -88,4 +88,13 @@ public class AdminController {
         ApiResponse response = adminService.rejectUser(id);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * Delete a user record permanently from the database.
+     */
+    @DeleteMapping("/users/{id}")
+    public ResponseEntity<ApiResponse> deleteUser(@PathVariable Long id) {
+        ApiResponse response = adminService.deleteUser(id);
+        return ResponseEntity.ok(response);
+    }
 }

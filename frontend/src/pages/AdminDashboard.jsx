@@ -8,10 +8,10 @@ import AdminEmissionFactors from './admin/AdminEmissionFactors';
 const STATUS_TABS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 const PAGE_SIZES = [10, 50, 100];
 const MAIN_NAVS = [
-  { id: 'users', label: 'User Approvals' },
-  { id: 'categories', label: 'Categories' },
-  { id: 'activityTypes', label: 'Activity Types' },
-  { id: 'emissionFactors', label: 'Emission Factors' },
+  { id: 'users', label: 'User Management', icon: 'users' },
+  { id: 'categories', label: 'Activity Categories', icon: 'category' },
+  { id: 'activityTypes', label: 'Activity Types', icon: 'type' },
+  { id: 'emissionFactors', label: 'Emission Factors', icon: 'factor' },
 ];
 
 export default function AdminDashboard() {
@@ -28,7 +28,8 @@ export default function AdminDashboard() {
 
   // Table state
   const [users, setUsers] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('PENDING');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
@@ -37,8 +38,19 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Track which user IDs have an action in-progress
+  // Statistics counters
+  const [stats, setStats] = useState({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  });
+
+  // Track action loading per user ID
   const [actionLoading, setActionLoading] = useState({});
+
+  // Confirm delete modal state
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState(null);
 
   // Redirect if not admin
   useEffect(() => {
@@ -61,6 +73,20 @@ export default function AdminDashboard() {
       setUsers(data.content || []);
       setTotalPages(data.totalPages || 0);
       setTotalElements(data.totalElements || 0);
+
+      // Fetch status counts for material stat cards
+      const [pendingRes, approvedRes, rejectedRes, allRes] = await Promise.all([
+        adminApi.getUsers(token, { status: 'PENDING', page: 0, size: 1 }),
+        adminApi.getUsers(token, { status: 'APPROVED', page: 0, size: 1 }),
+        adminApi.getUsers(token, { status: 'REJECTED', page: 0, size: 1 }),
+        adminApi.getUsers(token, { status: 'ALL', page: 0, size: 1 }),
+      ]);
+      setStats({
+        total: allRes.totalElements || 0,
+        pending: pendingRes.totalElements || 0,
+        approved: approvedRes.totalElements || 0,
+        rejected: rejectedRes.totalElements || 0,
+      });
     } catch (err) {
       setError(err.message || 'Failed to fetch users');
       setUsers([]);
@@ -70,10 +96,11 @@ export default function AdminDashboard() {
   }, [token, statusFilter, currentPage, pageSize]);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    if (activeNav === 'users') {
+      fetchUsers();
+    }
+  }, [fetchUsers, activeNav]);
 
-  // Reset page when filter or page size changes
   const handleStatusChange = (status) => {
     setStatusFilter(status);
     setCurrentPage(0);
@@ -92,7 +119,7 @@ export default function AdminDashboard() {
     setSuccessMsg('');
     try {
       const res = await adminApi.approveUser(token, userId);
-      setSuccessMsg(res.message || `${userName} approved!`);
+      setSuccessMsg(res.message || `${userName} approved successfully!`);
       fetchUsers();
     } catch (err) {
       setError(err.message || 'Failed to approve user');
@@ -116,17 +143,28 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteConfirmUser) return;
+    const { id: userId, fullName: userName } = deleteConfirmUser;
+    setActionLoading((prev) => ({ ...prev, [userId]: 'delete' }));
+    setError('');
+    setSuccessMsg('');
+    setDeleteConfirmUser(null);
+    try {
+      const res = await adminApi.deleteUser(token, userId);
+      setSuccessMsg(res.message || `User '${userName}' deleted successfully.`);
+      fetchUsers();
+    } catch (err) {
+      setError(err.message || 'Failed to delete user record');
+    } finally {
+      setActionLoading((prev) => { const n = { ...prev }; delete n[userId]; return n; });
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login', { replace: true });
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-IN', {
-      year: 'numeric', month: 'short', day: 'numeric',
-    });
   };
 
   const formatDateTime = (dateStr) => {
@@ -137,335 +175,458 @@ export default function AdminDashboard() {
     });
   };
 
-  // Page range info
+  // Filtered users for search query
+  const filteredUsers = users.filter((u) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      u.fullName?.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.organization?.toLowerCase().includes(q) ||
+      u.phone?.includes(q)
+    );
+  });
+
   const startRecord = totalElements === 0 ? 0 : currentPage * pageSize + 1;
   const endRecord = Math.min((currentPage + 1) * pageSize, totalElements);
 
   return (
-    <div className="admin-page">
-      {/* ===== Header ===== */}
-      <header className="admin-header">
-        <div className="admin-header-left">
-          <div className="admin-logo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="mat-dashboard-layout">
+      {/* ===== MATERIAL SIDEBAR ===== */}
+      <aside className="mat-sidebar">
+        <div className="mat-sidebar-header">
+          <div className="mat-brand-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z" />
               <circle cx="12" cy="9" r="2.5" />
             </svg>
           </div>
-          <div>
-            <h1 className="admin-header-title">Admin Dashboard</h1>
-            <p className="admin-header-sub">Carbon Footprint Tracker · User Management</p>
+          <div className="mat-brand-text">
+            <strong>Material Admin</strong>
+            <span>Carbon Footprint</span>
           </div>
         </div>
-        <div className="admin-header-right">
-          <div className="admin-user-badge">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span>{adminUser?.fullName || 'Admin'}</span>
-          </div>
-          <button className="admin-logout-btn" onClick={handleLogout}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Logout
-          </button>
-        </div>
-      </header>
 
-      {/* ===== Main Content ===== */}
-      <main className="admin-main">
-        {/* Main Nav Tabs */}
-        <div className="admin-main-nav">
+        <div className="mat-sidebar-divider" />
+
+        <nav className="mat-sidebar-nav">
           {MAIN_NAVS.map((nav) => (
             <button
               key={nav.id}
-              className={`main-nav-btn ${activeNav === nav.id ? 'active' : ''}`}
+              className={`mat-nav-item ${activeNav === nav.id ? 'active' : ''}`}
               onClick={() => setActiveNav(nav.id)}
             >
-              {nav.label}
-            </button>
-          ))}
-        </div>
-
-        {activeNav === 'categories' && <AdminCategories token={token} />}
-        {activeNav === 'activityTypes' && <AdminActivityTypes token={token} />}
-        {activeNav === 'emissionFactors' && <AdminEmissionFactors token={token} />}
-
-        {activeNav === 'users' && (
-          <>
-            {/* Stats bar */}
-            <div className="admin-stats-bar">
-              <div className="admin-stat">
-                <span className="admin-stat-value">{totalElements}</span>
-                <span className="admin-stat-label">
-                  {statusFilter === 'ALL' ? 'Total Users' : `${statusFilter.charAt(0) + statusFilter.slice(1).toLowerCase()} Users`}
-                </span>
-              </div>
-            </div>
-
-        {/* Alerts */}
-        {error && (
-          <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-            <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="15" y1="9" x2="9" y2="15" />
-              <line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-            <span>{error}</span>
-          </div>
-        )}
-        {successMsg && (
-          <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
-            <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* Status Filter Tabs */}
-        <div className="admin-tabs">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab}
-              id={`tab-${tab.toLowerCase()}`}
-              className={`admin-tab ${statusFilter === tab ? 'active' : ''}`}
-              onClick={() => handleStatusChange(tab)}
-            >
-              <span className={`tab-dot tab-dot-${tab.toLowerCase()}`}></span>
-              {tab.charAt(0) + tab.slice(1).toLowerCase()}
-            </button>
-          ))}
-        </div>
-
-        {/* Table Card */}
-        <div className="admin-table-card">
-          {/* Top controls */}
-          <div className="admin-table-controls">
-            <div className="admin-page-size">
-              <label htmlFor="page-size-select">Show</label>
-              <select
-                id="page-size-select"
-                className="admin-select"
-                value={pageSize}
-                onChange={handlePageSizeChange}
-              >
-                {PAGE_SIZES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <span>entries</span>
-            </div>
-            <div className="admin-record-info">
-              {totalElements > 0
-                ? `Showing ${startRecord}–${endRecord} of ${totalElements}`
-                : 'No records found'}
-            </div>
-          </div>
-
-          {/* Scrollable Table */}
-          <div className="admin-table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Full Name</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Document</th>
-                  <th>Organization</th>
-                  <th>Status</th>
-                  <th>Registered</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="9" className="admin-table-empty">
-                      <div className="admin-table-loader">
-                        <span className="spinner"></span>
-                        Loading users...
-                      </div>
-                    </td>
-                  </tr>
-                ) : users.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" className="admin-table-empty">
-                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.3, marginBottom: '0.5rem' }}>
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                        <circle cx="9" cy="7" r="4" />
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                      </svg>
-                      <p>No {statusFilter !== 'ALL' ? statusFilter.toLowerCase() : ''} users found</p>
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((user) => (
-                    <tr key={user.id}>
-                      <td className="td-id">{user.id}</td>
-                      <td className="td-name">
-                        <div className="user-avatar">{user.fullName?.charAt(0).toUpperCase()}</div>
-                        {user.fullName}
-                      </td>
-                      <td className="td-email">{user.email}</td>
-                      <td>{user.phone || '—'}</td>
-                      <td>
-                        <span className="doc-badge">{user.documentType}</span>
-                        <span className="doc-number">{user.documentNumber}</span>
-                      </td>
-                      <td>{user.organization || '—'}</td>
-                      <td>
-                        <span className={`status-badge status-${user.accountStatus?.toLowerCase()}`}>
-                          {user.accountStatus}
-                        </span>
-                      </td>
-                      <td className="td-date">{formatDateTime(user.createdAt)}</td>
-                      <td className="td-actions">
-                        {user.accountStatus === 'PENDING' ? (
-                          <>
-                            <button
-                              className="action-btn action-approve"
-                              disabled={!!actionLoading[user.id]}
-                              onClick={() => handleApprove(user.id, user.fullName)}
-                            >
-                              {actionLoading[user.id] === 'approve' ? (
-                                <span className="spinner-sm"></span>
-                              ) : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              )}
-                              Approve
-                            </button>
-                            <button
-                              className="action-btn action-reject"
-                              disabled={!!actionLoading[user.id]}
-                              onClick={() => handleReject(user.id, user.fullName)}
-                            >
-                              {actionLoading[user.id] === 'reject' ? (
-                                <span className="spinner-sm"></span>
-                              ) : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <line x1="18" y1="6" x2="6" y2="18" />
-                                  <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                              )}
-                              Reject
-                            </button>
-                          </>
-                        ) : (
-                          <span className="action-done">
-                            {user.accountStatus === 'APPROVED' ? '✓ Approved' : '✗ Rejected'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+              <div className="mat-nav-icon">
+                {nav.icon === 'users' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
                 )}
-              </tbody>
-            </table>
+                {nav.icon === 'category' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                  </svg>
+                )}
+                {nav.icon === 'type' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                )}
+                {nav.icon === 'factor' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                )}
+              </div>
+              <span>{nav.label}</span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* ===== MAIN CONTENT AREA ===== */}
+      <div className="mat-main-wrapper">
+        {/* Top Navbar */}
+        <header className="mat-navbar">
+          <div className="mat-navbar-left">
+            <div className="mat-breadcrumbs">
+              <span>Pages</span> / <span className="active-path">{MAIN_NAVS.find(n => n.id === activeNav)?.label}</span>
+            </div>
+            <h2 className="mat-page-title">{MAIN_NAVS.find(n => n.id === activeNav)?.label}</h2>
           </div>
 
-          {/* Pagination Controls */}
-          {totalPages > 0 && (
-            <div className="admin-pagination">
-              <button
-                className="pagination-btn"
-                disabled={currentPage === 0}
-                onClick={() => setCurrentPage(0)}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="11 17 6 12 11 7" />
-                  <polyline points="18 17 13 12 18 7" />
+          <div className="mat-navbar-right">
+            {activeNav === 'users' && (
+              <div className="mat-search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-              </button>
-              <button
-                className="pagination-btn"
-                disabled={currentPage === 0}
-                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-              </button>
+                <input
+                  type="text"
+                  placeholder="Type to search users..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
 
-              <div className="pagination-pages">
-                {generatePageNumbers(currentPage, totalPages).map((pg, idx) =>
-                  pg === '...' ? (
-                    <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
-                  ) : (
+            <div className="mat-user-profile">
+              <div className="mat-avatar">{adminUser?.fullName?.charAt(0).toUpperCase() || 'A'}</div>
+              <span>{adminUser?.fullName || 'Admin'}</span>
+            </div>
+
+            <button className="mat-btn-logout" onClick={handleLogout} title="Logout">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        {/* Content Section */}
+        <main className="mat-content">
+          {activeNav === 'categories' && <AdminCategories token={token} />}
+          {activeNav === 'activityTypes' && <AdminActivityTypes token={token} />}
+          {activeNav === 'emissionFactors' && <AdminEmissionFactors token={token} />}
+
+          {activeNav === 'users' && (
+            <>
+              {/* ===== MATERIAL STAT CARDS ===== */}
+              <div className="mat-stats-grid">
+                <div className="mat-stat-card card-total" onClick={() => handleStatusChange('ALL')}>
+                  <div className="mat-stat-icon icon-blue">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Total Registrations</span>
+                    <h3>{stats.total}</h3>
+                  </div>
+                </div>
+
+                <div className="mat-stat-card card-pending" onClick={() => handleStatusChange('PENDING')}>
+                  <div className="mat-stat-icon icon-orange">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Pending Approvals</span>
+                    <h3>{stats.pending}</h3>
+                  </div>
+                </div>
+
+                <div className="mat-stat-card card-approved" onClick={() => handleStatusChange('APPROVED')}>
+                  <div className="mat-stat-icon icon-green">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Approved Users</span>
+                    <h3>{stats.approved}</h3>
+                  </div>
+                </div>
+
+                <div className="mat-stat-card card-rejected" onClick={() => handleStatusChange('REJECTED')}>
+                  <div className="mat-stat-icon icon-pink">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="15" y1="9" x2="9" y2="15" />
+                      <line x1="9" y1="9" x2="15" y2="15" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Rejected Requests</span>
+                    <h3>{stats.rejected}</h3>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alert Banners */}
+              {error && (
+                <div className="alert alert-error" style={{ marginBottom: '1.25rem' }}>
+                  <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              )}
+              {successMsg && (
+                <div className="alert alert-success" style={{ marginBottom: '1.25rem' }}>
+                  <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  <span>{successMsg}</span>
+                </div>
+              )}
+
+              {/* ===== MATERIAL USER TABLE CARD ===== */}
+              <div className="mat-card-table">
+                {/* Header Banner */}
+                <div className="mat-card-header">
+                  <div className="mat-card-header-title">
+                    <h4>User Account Requests</h4>
+                    <p>Manage user registration approvals, identity proof verification, and record deletions</p>
+                  </div>
+
+                  {/* Status Filter Tabs */}
+                  <div className="mat-filter-tabs">
+                    {STATUS_TABS.map((t) => (
+                      <button
+                        key={t}
+                        className={`mat-filter-tab ${statusFilter === t ? 'active' : ''}`}
+                        onClick={() => handleStatusChange(t)}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Table Top Controls */}
+                <div className="mat-table-controls">
+                  <div className="mat-page-size">
+                    <label>Show</label>
+                    <select value={pageSize} onChange={handlePageSizeChange}>
+                      {PAGE_SIZES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <span>entries per page</span>
+                  </div>
+                  <div className="mat-record-info">
+                    {totalElements > 0
+                      ? `Showing ${startRecord}–${endRecord} of ${totalElements} records`
+                      : 'No records found'}
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="mat-table-responsive">
+                  <table className="mat-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>User Profile</th>
+                        <th>Contact</th>
+                        <th>Organization</th>
+                        <th>Document Proof</th>
+                        <th>Status</th>
+                        <th>Registered Date</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan="8" className="mat-empty-td">
+                            <span className="mat-spinner" /> Loading users...
+                          </td>
+                        </tr>
+                      ) : filteredUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="mat-empty-td">
+                            <p>No user records found matching criteria.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredUsers.map((user) => (
+                          <tr key={user.id}>
+                            <td className="mat-td-id">#{user.id}</td>
+                            <td className="mat-td-user">
+                              <div className="mat-user-avatar">{user.fullName?.charAt(0).toUpperCase()}</div>
+                              <div className="mat-user-meta">
+                                <strong>{user.fullName}</strong>
+                                <span>{user.email}</span>
+                              </div>
+                            </td>
+                            <td className="mat-td-text">{user.phone || '—'}</td>
+                            <td className="mat-td-text">
+                              <strong>{user.organization || 'Individual'}</strong>
+                              <span>{user.industryType || 'N/A'}</span>
+                            </td>
+                            <td>
+                              <div className="mat-doc-box">
+                                <span className="mat-doc-badge">{user.documentType || 'PROOF'}</span>
+                                {user.documentFileUrl ? (
+                                  <a
+                                    href={user.documentFileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mat-btn-doc-link"
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                      <polyline points="14 2 14 8 20 8" />
+                                    </svg>
+                                    View Document
+                                  </a>
+                                ) : (
+                                  <span className="mat-no-doc">No file attached</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`mat-status-pill status-${user.accountStatus?.toLowerCase()}`}>
+                                {user.accountStatus}
+                              </span>
+                            </td>
+                            <td className="mat-td-date">{formatDateTime(user.createdAt)}</td>
+                            <td className="mat-td-actions">
+                              <div className="mat-action-group">
+                                {user.accountStatus === 'PENDING' && (
+                                  <>
+                                    <button
+                                      className="mat-btn-act act-approve"
+                                      disabled={!!actionLoading[user.id]}
+                                      onClick={() => handleApprove(user.id, user.fullName)}
+                                      title="Approve User"
+                                    >
+                                      {actionLoading[user.id] === 'approve' ? (
+                                        <span className="mat-spinner-sm" />
+                                      ) : (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                          <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                      )}
+                                      Approve
+                                    </button>
+                                    <button
+                                      className="mat-btn-act act-reject"
+                                      disabled={!!actionLoading[user.id]}
+                                      onClick={() => handleReject(user.id, user.fullName)}
+                                      title="Reject User"
+                                    >
+                                      {actionLoading[user.id] === 'reject' ? (
+                                        <span className="mat-spinner-sm" />
+                                      ) : (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                          <line x1="18" y1="6" x2="6" y2="18" />
+                                          <line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                      )}
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+
+                                {/* DELETE ACTION BUTTON */}
+                                <button
+                                  className="mat-btn-act act-delete"
+                                  disabled={!!actionLoading[user.id]}
+                                  onClick={() => setDeleteConfirmUser(user)}
+                                  title="Delete User Record"
+                                >
+                                  {actionLoading[user.id] === 'delete' ? (
+                                    <span className="mat-spinner-sm" />
+                                  ) : (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <polyline points="3 6 5 6 21 6" />
+                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                      <line x1="10" y1="11" x2="10" y2="17" />
+                                      <line x1="14" y1="11" x2="14" y2="17" />
+                                    </svg>
+                                  )}
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 0 && (
+                  <div className="mat-pagination">
                     <button
-                      key={pg}
-                      className={`pagination-page ${currentPage === pg ? 'active' : ''}`}
-                      onClick={() => setCurrentPage(pg)}
+                      className="mat-page-btn"
+                      disabled={currentPage === 0}
+                      onClick={() => setCurrentPage(0)}
                     >
-                      {pg + 1}
+                      First
                     </button>
-                  )
+                    <button
+                      className="mat-page-btn"
+                      disabled={currentPage === 0}
+                      onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                    >
+                      &larr; Prev
+                    </button>
+                    <span className="mat-page-current">
+                      Page {currentPage + 1} of {totalPages}
+                    </span>
+                    <button
+                      className="mat-page-btn"
+                      disabled={currentPage >= totalPages - 1}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                    >
+                      Next &rarr;
+                    </button>
+                    <button
+                      className="mat-page-btn"
+                      disabled={currentPage >= totalPages - 1}
+                      onClick={() => setCurrentPage(totalPages - 1)}
+                    >
+                      Last
+                    </button>
+                  </div>
                 )}
               </div>
+            </>
+          )}
+        </main>
+      </div>
 
-              <button
-                className="pagination-btn"
-                disabled={currentPage >= totalPages - 1}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
+      {/* ===== CONFIRM DELETE MODAL ===== */}
+      {deleteConfirmUser && (
+        <div className="mat-modal-overlay">
+          <div className="mat-modal-card">
+            <div className="mat-modal-icon icon-danger">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="12" y1="9" x2="12" y2="15" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <h3>Delete User Record</h3>
+            <p>
+              Are you sure you want to permanently delete user record for <strong>{deleteConfirmUser.fullName}</strong> ({deleteConfirmUser.email})?
+              This action cannot be undone.
+            </p>
+            <div className="mat-modal-actions">
+              <button className="btn btn-secondary" onClick={() => setDeleteConfirmUser(null)}>
+                Cancel
               </button>
-              <button
-                className="pagination-btn"
-                disabled={currentPage >= totalPages - 1}
-                onClick={() => setCurrentPage(totalPages - 1)}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="13 17 18 12 13 7" />
-                  <polyline points="6 17 11 12 6 7" />
-                </svg>
+              <button className="mat-btn-danger" onClick={handleDelete}>
+                Permanently Delete
               </button>
             </div>
-          )}
+          </div>
         </div>
-        </>
-        )}
-      </main>
+      )}
     </div>
   );
-}
-
-/**
- * Generates an array of page numbers to display, with ellipses for large ranges.
- * E.g. [0, 1, '...', 8, 9] for currentPage=0, totalPages=10
- */
-function generatePageNumbers(current, total) {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i);
-  }
-
-  const pages = new Set();
-  // Always show first and last
-  pages.add(0);
-  pages.add(total - 1);
-  // Show current and neighbors
-  for (let i = Math.max(0, current - 1); i <= Math.min(total - 1, current + 1); i++) {
-    pages.add(i);
-  }
-
-  const sorted = [...pages].sort((a, b) => a - b);
-  const result = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
-      result.push('...');
-    }
-    result.push(sorted[i]);
-  }
-  return result;
 }

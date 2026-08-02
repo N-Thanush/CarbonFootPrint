@@ -25,8 +25,7 @@ public class RegisterRequest {
     @Email(message = "Please provide a valid email address")
     private String email;
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+    // Password is optional on initial registration (set via email token upon admin approval)
     private String password;
 
     @NotBlank(message = "Phone number is required")
@@ -34,8 +33,14 @@ public class RegisterRequest {
     private String phone;
 
     @NotNull(message = "Date of birth is required")
-    @Past(message = "Date of birth must be in the past")
+    @PastOrPresent(message = "Date of birth must be in the past")
     private LocalDate dateOfBirth;
+
+    private String gender;
+
+    private String designation;
+
+    private String industryType;
 
     @NotBlank(message = "Address is required")
     @Size(max = 500, message = "Address must not exceed 500 characters")
@@ -45,13 +50,14 @@ public class RegisterRequest {
     @Size(max = 200, message = "Organization name must not exceed 200 characters")
     private String organization;
 
+    // URL or file path to document proof upload
+    private String documentFileUrl;
+
     // URL to profile picture (optional for now)
     private String profilePictureUrl;
 
-    @NotNull(message = "Document type is required (AADHAAR, PAN, or VOTER_ID)")
     private DocumentType documentType;
 
-    @NotBlank(message = "Document number is required")
     private String documentNumber;
 
     // Google reCAPTCHA v2 response token

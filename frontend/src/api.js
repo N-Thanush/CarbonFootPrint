@@ -35,6 +35,43 @@ export const authApi = {
     return handleResponse(response);
   },
 
+  setPassword: async (payload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/set-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  forgotPassword: async (payload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  resetPassword: async (payload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  uploadDocument: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE_URL}/auth/upload-document`, {
+      method: 'POST',
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
   getProfile: async (token) => {
     const response = await fetch(`${API_BASE_URL}/auth/me`, {
       method: 'GET',
@@ -78,6 +115,17 @@ export const adminApi = {
   rejectUser: async (token, userId) => {
     const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/reject`, {
       method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse(response);
+  },
+
+  deleteUser: async (token, userId) => {
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+      method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
