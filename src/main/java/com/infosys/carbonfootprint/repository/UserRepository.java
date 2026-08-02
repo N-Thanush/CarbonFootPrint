@@ -24,6 +24,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByAccountStatus(AccountStatus status);
 
+    Optional<User> findByActivationToken(String activationToken);
+
+    Optional<User> findByResetPasswordToken(String resetPasswordToken);
+
     /**
      * Paginated query for users filtered by account status.
      */

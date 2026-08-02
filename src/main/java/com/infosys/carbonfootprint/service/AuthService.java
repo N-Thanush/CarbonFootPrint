@@ -17,6 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Service handling user registration, login, and profile retrieval.
  */
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+/**
+ * Service handling user registration, login, profile retrieval, account activation, and password reset.
+ */
 @Service
 public class AuthService {
 
@@ -27,17 +33,20 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final DocumentValidator documentValidator;
     private final CaptchaService captchaService;
+    private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider jwtTokenProvider,
                        DocumentValidator documentValidator,
-                       CaptchaService captchaService) {
+                       CaptchaService captchaService,
+                       EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.documentValidator = documentValidator;
         this.captchaService = captchaService;
+        this.emailService = emailService;
     }
 
     /**
@@ -48,8 +57,7 @@ public class AuthService {
      * 1. Check if email is already registered
      * 2. Check if document number is already used
      * 3. Validate document number format (Aadhaar/PAN/Voter ID)
-     * 4. Hash the password
-     * 5. Save user with PENDING status
+     * 4. Save user with PENDING status (Password is set after Admin approval via Email link)
      */
     @Transactional
     public ApiResponse register(RegisterRequest request) {
@@ -63,42 +71,111 @@ public class AuthService {
             throw new IllegalArgumentException("An account with this email already exists");
         }
 
-        // 2. Check duplicate document number
-        if (userRepository.existsByDocumentNumber(request.getDocumentNumber().trim())) {
-            throw new IllegalArgumentException("This document number is already registered");
+        // 2. Check duplicate email
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new IllegalArgumentException("An account with this email already exists");
         }
 
-        // 3. Validate document format
-        if (!documentValidator.isValid(request.getDocumentType(), request.getDocumentNumber())) {
-            String hint = documentValidator.getFormatHint(request.getDocumentType());
-            throw new IllegalArgumentException("Invalid document number format. " + hint);
+        // 3. Encode optional password if user provided one
+        String encodedPassword = null;
+        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+            encodedPassword = passwordEncoder.encode(request.getPassword().trim());
         }
 
         // 4. Build user entity
         User user = User.builder()
                 .fullName(request.getFullName().trim())
                 .email(request.getEmail().trim().toLowerCase())
-                .password(passwordEncoder.encode(request.getPassword()))
+                .password(encodedPassword)
                 .phone(request.getPhone().trim())
                 .dateOfBirth(request.getDateOfBirth())
+                .gender(request.getGender() != null ? request.getGender().trim() : null)
+                .designation(request.getDesignation() != null ? request.getDesignation().trim() : null)
+                .industryType(request.getIndustryType() != null ? request.getIndustryType().trim() : null)
                 .address(request.getAddress().trim())
                 .organization(request.getOrganization() != null ? request.getOrganization().trim() : null)
+                .documentFileUrl(request.getDocumentFileUrl())
                 .profilePictureUrl(request.getProfilePictureUrl())
                 .documentType(request.getDocumentType())
-                .documentNumber(request.getDocumentNumber().trim().toUpperCase())
+                .documentNumber(request.getDocumentNumber() != null && !request.getDocumentNumber().trim().isEmpty() ? request.getDocumentNumber().trim().toUpperCase() : "NOT_PROVIDED")
                 .role(Role.USER)
                 .accountStatus(AccountStatus.PENDING)
                 .authProvider(AuthProvider.LOCAL)
                 .build();
 
-        // 5. Save
+        // 6. Save
         userRepository.save(user);
 
         logger.info("New user registered: {} (status: PENDING)", user.getEmail());
 
         return ApiResponse.success(
-                "Registration successful! Your account is pending admin approval. " +
-                "You will be able to log in once approved.");
+                "Registration successful! Your profile & documents have been submitted for admin approval. " +
+                "Once approved, you will receive an email with a link to set your password and access your account.");
+    }
+
+    /**
+     * Sets user password via activation token (after Admin approval).
+     */
+    @Transactional
+    public ApiResponse setPassword(SetPasswordRequest request) {
+        User user = userRepository.findByActivationToken(request.getToken())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired activation link token."));
+
+        if (user.getActivationTokenExpiry() != null && user.getActivationTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Activation token has expired. Please contact support or request a new link.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setActivationToken(null);
+        user.setActivationTokenExpiry(null);
+        user.setAccountStatus(AccountStatus.APPROVED);
+
+        userRepository.save(user);
+
+        logger.info("Password set successfully for user: {}", user.getEmail());
+        return ApiResponse.success("Password set successfully! You can now log in to your account.");
+    }
+
+    /**
+     * Initiates Forgot Password flow by sending reset token link to user's email.
+     */
+    @Transactional
+    public ApiResponse forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail().trim().toLowerCase())
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email address."));
+
+        String resetToken = UUID.randomUUID().toString();
+        user.setResetPasswordToken(resetToken);
+        user.setResetPasswordTokenExpiry(LocalDateTime.now().plusHours(2));
+
+        userRepository.save(user);
+
+        emailService.sendForgotPasswordEmail(user, resetToken);
+
+        logger.info("Password reset token generated and email sent for: {}", user.getEmail());
+        return ApiResponse.success("If an account exists with this email, a password reset link has been sent.");
+    }
+
+    /**
+     * Resets user password using reset token.
+     */
+    @Transactional
+    public ApiResponse resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByResetPasswordToken(request.getToken())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired password reset token."));
+
+        if (user.getResetPasswordTokenExpiry() != null && user.getResetPasswordTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Password reset token has expired. Please request a new password reset link.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setResetPasswordToken(null);
+        user.setResetPasswordTokenExpiry(null);
+
+        userRepository.save(user);
+
+        logger.info("Password reset successfully for user: {}", user.getEmail());
+        return ApiResponse.success("Password reset successfully! You may now log in with your new password.");
     }
 
     /**
@@ -116,14 +193,14 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
 
         // 2. Verify password
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("Invalid email or password");
         }
 
         // 3. Check account status
         if (user.getAccountStatus() == AccountStatus.PENDING) {
             throw new IllegalStateException(
-                    "Your account is pending admin approval. Please wait for approval before logging in.");
+                    "Your account is pending admin approval. Please wait for approval email before logging in.");
         }
         if (user.getAccountStatus() == AccountStatus.REJECTED) {
             throw new IllegalStateException(
@@ -153,8 +230,12 @@ public class AuthService {
                 .email(user.getEmail())
                 .phone(user.getPhone())
                 .dateOfBirth(user.getDateOfBirth())
+                .gender(user.getGender())
+                .designation(user.getDesignation())
+                .industryType(user.getIndustryType())
                 .address(user.getAddress())
                 .organization(user.getOrganization())
+                .documentFileUrl(user.getDocumentFileUrl())
                 .profilePictureUrl(user.getProfilePictureUrl())
                 .documentType(user.getDocumentType())
                 .documentNumber(user.getDocumentNumber())

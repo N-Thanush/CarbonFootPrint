@@ -30,15 +30,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse> handleValidationErrors(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
+        StringBuilder msgBuilder = new StringBuilder("Validation failed: ");
         for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
             errors.put(fieldError.getField(), fieldError.getDefaultMessage());
+            msgBuilder.append(fieldError.getDefaultMessage()).append(". ");
         }
 
         logger.warn("Validation failed: {}", errors);
 
         ApiResponse response = ApiResponse.builder()
                 .success(false)
-                .message("Validation failed")
+                .message(msgBuilder.toString().trim())
                 .data(errors)
                 .timestamp(java.time.LocalDateTime.now())
                 .build();
@@ -64,6 +66,16 @@ public class GlobalExceptionHandler {
         logger.warn("Forbidden: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handles file size limit exceeded errors.
+     */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse> handleMaxUploadSizeExceeded(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        logger.warn("File upload size exceeded limit: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("File size is too large. Maximum allowed file size is 25MB."));
     }
 
     /**

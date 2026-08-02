@@ -47,14 +47,30 @@ public class User {
     // Optional — for corporate/organization users
     private String organization;
 
+    private String gender;
+
+    private String designation;
+
+    private String industryType;
+
+    // File path or URL of the uploaded document proof
+    private String documentFileUrl;
+
+    // Activation & Password Reset Tokens
+    private String activationToken;
+
+    private LocalDateTime activationTokenExpiry;
+
+    private String resetPasswordToken;
+
+    private LocalDateTime resetPasswordTokenExpiry;
+
     // URL or file path to the profile picture
     private String profilePictureUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private DocumentType documentType;
 
-    @Column(nullable = false)
     private String documentNumber;
 
     @Enumerated(EnumType.STRING)

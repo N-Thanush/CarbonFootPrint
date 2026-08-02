@@ -23,8 +23,12 @@ public class UserProfileResponse {
     private String email;
     private String phone;
     private LocalDate dateOfBirth;
+    private String gender;
+    private String designation;
+    private String industryType;
     private String address;
     private String organization;
+    private String documentFileUrl;
     private String profilePictureUrl;
     private DocumentType documentType;
     private String documentNumber;

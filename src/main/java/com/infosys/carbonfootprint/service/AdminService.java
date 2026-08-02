@@ -12,7 +12,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -24,9 +26,11 @@ public class AdminService {
     private static final Logger logger = LoggerFactory.getLogger(AdminService.class);
 
     private final UserRepository userRepository;
+    private final EmailService emailService;
 
-    public AdminService(UserRepository userRepository) {
+    public AdminService(UserRepository userRepository, EmailService emailService) {
         this.userRepository = userRepository;
+        this.emailService = emailService;
     }
 
     /**
@@ -56,7 +60,8 @@ public class AdminService {
     }
 
     /**
-     * Approves a user's account — changes status from PENDING to APPROVED.
+     * Approves a user's account — changes status from PENDING to APPROVED
+     * and sends an approval email with activation link token.
      */
     @Transactional
     public ApiResponse approveUser(Long userId) {
@@ -68,11 +73,20 @@ public class AdminService {
         }
 
         user.setAccountStatus(AccountStatus.APPROVED);
+
+        // Generate activation token for password setup if password is not set
+        String token = UUID.randomUUID().toString();
+        user.setActivationToken(token);
+        user.setActivationTokenExpiry(LocalDateTime.now().plusHours(24));
+
         userRepository.save(user);
 
-        logger.info("Admin approved user: {} (ID: {})", user.getEmail(), userId);
+        // Send approval email with set password activation link
+        emailService.sendApprovalEmail(user, token);
 
-        return ApiResponse.success("User '" + user.getFullName() + "' has been approved successfully");
+        logger.info("Admin approved user: {} (ID: {}). Activation email sent.", user.getEmail(), userId);
+
+        return ApiResponse.success("User '" + user.getFullName() + "' approved successfully! An email with activation link has been sent to " + user.getEmail());
     }
 
     /**
@@ -90,9 +104,26 @@ public class AdminService {
         user.setAccountStatus(AccountStatus.REJECTED);
         userRepository.save(user);
 
+        // Send rejection email notification
+        emailService.sendRejectionEmail(user);
+
         logger.info("Admin rejected user: {} (ID: {})", user.getEmail(), userId);
 
         return ApiResponse.success("User '" + user.getFullName() + "' has been rejected");
+    }
+
+    /**
+     * Deletes a user record completely from the system database.
+     */
+    @Transactional
+    public ApiResponse deleteUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+
+        userRepository.delete(user);
+        logger.info("Admin deleted user record: {} (ID: {})", user.getEmail(), userId);
+
+        return ApiResponse.success("User record for '" + user.getFullName() + "' deleted successfully");
     }
 
     /**
@@ -105,8 +136,12 @@ public class AdminService {
                 .email(user.getEmail())
                 .phone(user.getPhone())
                 .dateOfBirth(user.getDateOfBirth())
+                .gender(user.getGender())
+                .designation(user.getDesignation())
+                .industryType(user.getIndustryType())
                 .address(user.getAddress())
                 .organization(user.getOrganization())
+                .documentFileUrl(user.getDocumentFileUrl())
                 .profilePictureUrl(user.getProfilePictureUrl())
                 .documentType(user.getDocumentType())
                 .documentNumber(user.getDocumentNumber())
