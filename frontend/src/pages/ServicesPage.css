@@ -1,0 +1,372 @@
+/* ===================================================
+                SERVICES HERO SECTION
+=================================================== */
+
+.servicesHero{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:90px 8%;
+    min-height:90vh;
+    background:linear-gradient(135deg,#F7FFF8,#ECFDF3);
+    gap:70px;
+}
+
+.servicesHero-left{
+    width:50%;
+}
+
+.services-tag{
+    display:inline-block;
+    background:#DFF5E1;
+    color:#2E7D32;
+    padding:10px 22px;
+    border-radius:30px;
+    font-weight:bold;
+    margin-bottom:25px;
+}
+
+.servicesHero-left h1{
+    font-size:64px;
+    color:#2E7D32;
+    line-height:1.2;
+    margin-bottom:25px;
+}
+
+.servicesHero-left p{
+    font-size:20px;
+    color:#555;
+    line-height:1.9;
+    margin-bottom:40px;
+}
+
+.services-buttons{
+    display:flex;
+    gap:20px;
+}
+
+.primaryServiceBtn{
+    background:#2E7D32;
+    color:white;
+    border:none;
+    padding:16px 35px;
+    border-radius:10px;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+    transition:.35s;
+}
+
+.primaryServiceBtn:hover{
+    background:#1B5E20;
+    transform:translateY(-5px);
+}
+
+.secondaryServiceBtn{
+    background:white;
+    color:#2E7D32;
+    border:2px solid #2E7D32;
+    padding:16px 35px;
+    border-radius:10px;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+    transition:.35s;
+}
+
+.secondaryServiceBtn:hover{
+    background:#2E7D32;
+    color:white;
+}
+
+.servicesHero-right{
+    width:45%;
+}
+
+.servicesHero-right img{
+    width:100%;
+    border-radius:25px;
+    box-shadow:0 20px 40px rgba(0,0,0,.15);
+    transition:.4s;
+}
+
+.servicesHero-right img:hover{
+    transform:scale(1.03);
+}
+
+/* ===================================================
+                SERVICES SECTION
+=================================================== */
+
+.servicesPage{
+    padding:100px 8%;
+    background:white;
+}
+
+.servicesPage-heading{
+    text-align:center;
+    margin-bottom:70px;
+}
+
+.servicesPage-heading span{
+    display:inline-block;
+    background:#E8F5E9;
+    color:#2E7D32;
+    padding:10px 20px;
+    border-radius:30px;
+    font-weight:bold;
+    margin-bottom:20px;
+}
+
+.servicesPage-heading h2{
+    font-size:46px;
+    color:#2E7D32;
+    margin-bottom:20px;
+}
+
+.servicesPage-heading p{
+    max-width:780px;
+    margin:auto;
+    color:#555;
+    line-height:1.8;
+    font-size:18px;
+}
+
+.servicesPage-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    gap:35px;
+    margin-top:60px;
+}
+
+.servicesPage-card{
+    background:linear-gradient(135deg,#2E7D32,#43A047);
+    color:white;
+    padding:40px;
+    border-radius:20px;
+    text-align:center;
+    transition:.35s;
+    box-shadow:0 15px 35px rgba(0,0,0,.15);
+}
+
+.servicesPage-card:hover{
+    transform:translateY(-12px) scale(1.03);
+    box-shadow:0 25px 50px rgba(46,125,50,.25);
+}
+
+.servicesPage-icon{
+    width:90px;
+    height:90px;
+    margin:auto;
+    border-radius:50%;
+    background:white;
+    color:#2E7D32;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:38px;
+    margin-bottom:25px;
+}
+
+.servicesPage-card h3{
+    font-size:28px;
+    margin-bottom:18px;
+}
+
+.servicesPage-card p{
+    line-height:1.8;
+    margin-bottom:30px;
+}
+
+.servicesPage-card button{
+    background:white;
+    color:#2E7D32;
+    border:none;
+    padding:14px 28px;
+    border-radius:30px;
+    font-weight:bold;
+    cursor:pointer;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+    margin:auto;
+    transition:.3s;
+}
+
+.servicesPage-card button:hover{
+    background:#E8F5E9;
+    transform:scale(1.05);
+}
+
+/* ===================================================
+                HOW IT WORKS
+=================================================== */
+
+.workflowSection{
+    padding:100px 8%;
+    background:#F8FFF8;
+}
+
+.workflowHeading{
+    text-align:center;
+    margin-bottom:70px;
+}
+
+.workflowHeading span{
+    display:inline-block;
+    background:#DFF5E1;
+    color:#2E7D32;
+    padding:10px 20px;
+    border-radius:30px;
+    font-weight:bold;
+    margin-bottom:20px;
+}
+
+.workflowHeading h2{
+    font-size:44px;
+    color:#2E7D32;
+    margin-bottom:20px;
+}
+
+.workflowHeading p{
+    max-width:700px;
+    margin:auto;
+    color:#555;
+    line-height:1.8;
+    font-size:18px;
+}
+
+.workflowGrid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:30px;
+}
+
+.workflowCard{
+    background:white;
+    border-radius:20px;
+    padding:35px;
+    text-align:center;
+    box-shadow:0 10px 30px rgba(0,0,0,.08);
+    transition:.35s;
+}
+
+.workflowCard:hover{
+    transform:translateY(-10px);
+}
+
+.workflowCard svg{
+    font-size:55px;
+    color:#2E7D32;
+    margin-bottom:20px;
+}
+
+.workflowCard h3{
+    color:#2E7D32;
+    margin-bottom:15px;
+    font-size:24px;
+}
+
+.workflowCard p{
+    color:#666;
+    line-height:1.7;
+}
+
+/* ===================================================
+                    CTA SECTION
+=================================================== */
+
+.serviceCTA{
+    padding:110px 8%;
+    text-align:center;
+    background:linear-gradient(135deg,#2E7D32,#43A047);
+    color:white;
+}
+
+.serviceCTA h2{
+    font-size:48px;
+    margin-bottom:25px;
+}
+
+.serviceCTA p{
+    max-width:750px;
+    margin:0 auto 45px;
+    line-height:1.9;
+    font-size:20px;
+}
+
+.serviceCTA button{
+    background:white;
+    color:#2E7D32;
+    border:none;
+    padding:18px 45px;
+    border-radius:40px;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+    transition:.3s;
+}
+
+.serviceCTA button:hover{
+    transform:scale(1.08);
+    background:#E8F5E9;
+}
+
+/* ===================================================
+                RESPONSIVE DESIGN
+=================================================== */
+
+@media(max-width:992px){
+
+.servicesHero{
+    flex-direction:column;
+    text-align:center;
+}
+
+.servicesHero-left{
+    width:100%;
+}
+
+.servicesHero-right{
+    width:80%;
+}
+
+.services-buttons{
+    justify-content:center;
+}
+
+}
+
+@media(max-width:768px){
+
+.servicesHero-left h1{
+    font-size:42px;
+}
+
+.servicesHero-left p{
+    font-size:18px;
+}
+
+.servicesHero-right{
+    width:100%;
+}
+
+.services-buttons{
+    flex-direction:column;
+    align-items:center;
+}
+
+.workflowHeading h2{
+    font-size:34px;
+}
+
+.serviceCTA h2{
+    font-size:34px;
+}
+
+.serviceCTA p{
+    font-size:18px;
+}
+
+}
