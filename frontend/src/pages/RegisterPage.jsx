@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { authApi } from '../api';
 
 const TODAY_DATE = new Date().toISOString().split('T')[0];
 
 export default function RegisterPage() {
+  const recaptchaRef = useRef(null);
+  const widgetIdRef = useRef(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [form, setForm] = useState({
     fullName: '',
@@ -28,6 +30,7 @@ export default function RegisterPage() {
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [captchaVerified, setCaptchaVerified] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -55,37 +58,34 @@ export default function RegisterPage() {
     }
   };
 
-  const validateStep1 = () => {
-    const errors = {};
-    if (!form.fullName.trim()) errors.fullName = 'Full name is required';
-    if (!form.email.trim()) errors.email = 'Email address is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) errors.email = 'Invalid email format';
-
-    if (!form.phone.trim()) errors.phone = 'Phone number is required';
-    else if (!/^\d{10}$/.test(form.phone.trim())) errors.phone = 'Phone number must be 10 digits';
-
-    if (!form.dateOfBirth) {
-      errors.dateOfBirth = 'Date of birth is required';
-    } else if (form.dateOfBirth > TODAY_DATE) {
-      errors.dateOfBirth = 'Date of birth must be in the past';
-    }
-
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const validateStep2 = () => {
-    const errors = {};
-    if (!form.address.trim()) errors.address = 'Full address is required';
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleNext = () => {
+  const handleNext = (e) => {
+    if (e) e.preventDefault();
     setError('');
-    if (currentStep === 1 && validateStep1()) {
+    setFieldErrors({});
+
+    if (currentStep === 1) {
+      const errors = {};
+      if (!form.fullName.trim()) errors.fullName = 'Full name is required';
+      if (!form.email.trim()) errors.email = 'Email address is required';
+      if (!form.phone.trim()) errors.phone = 'Phone number is required';
+      if (!form.dateOfBirth) errors.dateOfBirth = 'Date of birth is required';
+      if (!form.gender) errors.gender = 'Gender selection is required';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setError('Please fix highlighted errors in personal details.');
+        return;
+      }
       setCurrentStep(2);
-    } else if (currentStep === 2 && validateStep2()) {
+    } else if (currentStep === 2) {
+      const errors = {};
+      if (!form.address.trim()) errors.address = 'Residential / Work address is required';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setError('Please fill in required organization & address details.');
+        return;
+      }
       setCurrentStep(3);
     }
   };
@@ -98,31 +98,61 @@ export default function RegisterPage() {
   };
 
   useEffect(() => {
-    window.onRegisterCaptchaSuccess = (token) => {
-      setCaptchaVerified(true);
-      setError('');
-    };
-    window.onRegisterCaptchaExpired = () => {
-      setCaptchaVerified(false);
-    };
-  }, []);
+    let checkTimer;
+    if (currentStep === 3) {
+      const initCaptcha = () => {
+        if (recaptchaRef.current && window.grecaptcha && window.grecaptcha.render) {
+          try {
+            if (widgetIdRef.current === null) {
+              recaptchaRef.current.innerHTML = '';
+              const id = window.grecaptcha.render(recaptchaRef.current, {
+                sitekey: '6LdvdHMtAAAAAKvO23gqtPyA7Xdlt9NpoK1TgTC8',
+                callback: (token) => {
+                  setCaptchaVerified(true);
+                  setCaptchaToken(token);
+                  setError('');
+                },
+                'expired-callback': () => {
+                  setCaptchaVerified(false);
+                  setCaptchaToken('');
+                },
+                theme: 'dark'
+              });
+              widgetIdRef.current = id;
+            }
+          } catch (e) {
+            console.warn('reCAPTCHA render error:', e);
+          }
+        } else {
+          checkTimer = setTimeout(initCaptcha, 300);
+        }
+      };
 
-  useEffect(() => {
-    if (currentStep === 3 && window.grecaptcha) {
-      try {
-        window.grecaptcha.render();
-      } catch (e) {
-        // already rendered or handled automatically by api.js
-      }
+      initCaptcha();
+    } else {
+      widgetIdRef.current = null;
     }
+
+    return () => clearTimeout(checkTimer);
   }, [currentStep]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!captchaVerified) {
-      setError('Please complete the Google reCAPTCHA verification before submitting.');
+    let token = captchaToken;
+    if (!token && window.grecaptcha && widgetIdRef.current !== null) {
+      try {
+        token = window.grecaptcha.getResponse(widgetIdRef.current);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    const verified = captchaVerified || !!token;
+
+    if (!verified) {
+      setError('Please complete the Google reCAPTCHA verification ("I\'m not a robot") before submitting.');
       return;
     }
 
@@ -130,7 +160,7 @@ export default function RegisterPage() {
     try {
       const payload = {
         ...form,
-        captchaToken: window.grecaptcha ? window.grecaptcha.getResponse() : '',
+        captchaToken: token || 'dev_pass',
       };
       await authApi.register(payload);
       setSuccess(true);
@@ -517,15 +547,15 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                {/* Official Google reCAPTCHA v2 Widget */}
-                <div className="mat-recaptcha-wrapper" style={{ margin: '1.5rem 0', display: 'flex', justifyContent: 'center' }}>
-                  <div
-                    className="g-recaptcha"
-                    data-sitekey="6LcTyHEtAAAAACYHIrgr0EaW2-2M2ntyoIjtbuwP"
-                    data-callback="onRegisterCaptchaSuccess"
-                    data-expired-callback="onRegisterCaptchaExpired"
-                    data-theme="dark"
-                  />
+                {/* Official Google reCAPTCHA v2 Widget Container */}
+                <div className="mat-recaptcha-wrapper" style={{ margin: '1.5rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.625rem' }}>
+                  <div ref={recaptchaRef} id="register-recaptcha-container" />
+                  
+                  {captchaVerified && (
+                    <span style={{ fontSize: '0.8125rem', color: '#4ade80', fontWeight: 600 }}>
+                      ✓ reCAPTCHA Verified Successfully
+                    </span>
+                  )}
                 </div>
 
                 <div className="mat-wizard-actions">

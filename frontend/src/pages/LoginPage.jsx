@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../api';
 
@@ -7,20 +7,18 @@ import { authApi } from '../api';
  */
 export default function LoginPage() {
   const navigate = useNavigate();
+  const recaptchaRef = useRef(null);
+  const widgetIdRef = useRef(null);
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [captchaVerified, setCaptchaVerified] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-    setError('');
-  };
-
-  const handleCaptchaToggle = () => {
-    setCaptchaVerified(!captchaVerified);
     setError('');
   };
 
@@ -29,7 +27,18 @@ export default function LoginPage() {
     setError('');
     setSuccess('');
 
-    if (!captchaVerified) {
+    let token = captchaToken;
+    if (!token && window.grecaptcha && widgetIdRef.current !== null) {
+      try {
+        token = window.grecaptcha.getResponse(widgetIdRef.current);
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    const verified = captchaVerified || !!token;
+
+    if (!verified) {
       setError('Please complete the reCAPTCHA verification ("I\'m not a robot").');
       return;
     }
@@ -60,6 +69,41 @@ export default function LoginPage() {
     }
   };
 
+  // Handle reCAPTCHA rendering
+  useEffect(() => {
+    let checkTimer;
+    const initCaptcha = () => {
+      if (recaptchaRef.current && window.grecaptcha && window.grecaptcha.render) {
+        try {
+          if (widgetIdRef.current === null) {
+            recaptchaRef.current.innerHTML = '';
+            const id = window.grecaptcha.render(recaptchaRef.current, {
+              sitekey: '6LdvdHMtAAAAAKvO23gqtPyA7Xdlt9NpoK1TgTC8',
+              callback: (t) => {
+                setCaptchaVerified(true);
+                setCaptchaToken(t);
+                setError('');
+              },
+              'expired-callback': () => {
+                setCaptchaVerified(false);
+                setCaptchaToken('');
+              },
+              theme: 'dark'
+            });
+            widgetIdRef.current = id;
+          }
+        } catch (e) {
+          console.warn('Login reCAPTCHA render error:', e);
+        }
+      } else {
+        checkTimer = setTimeout(initCaptcha, 300);
+      }
+    };
+
+    initCaptcha();
+    return () => clearTimeout(checkTimer);
+  }, []);
+
   // Handle OAuth2 redirect parameters
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -84,13 +128,6 @@ export default function LoginPage() {
     } else if (oauthError) {
       setError('Google Sign-In Error: Invalid Client Credentials.');
     }
-    window.onLoginCaptchaSuccess = (token) => {
-      setCaptchaVerified(true);
-      setError('');
-    };
-    window.onLoginCaptchaExpired = () => {
-      setCaptchaVerified(false);
-    };
   }, [navigate]);
 
   const handleGoogleClick = () => {
@@ -242,15 +279,15 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Official Google reCAPTCHA v2 Widget */}
-          <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'center' }}>
-            <div
-              className="g-recaptcha"
-              data-sitekey="6LcTyHEtAAAAACYHIrgr0EaW2-2M2ntyoIjtbuwP"
-              data-callback="onLoginCaptchaSuccess"
-              data-expired-callback="onLoginCaptchaExpired"
-              data-theme="dark"
-            />
+          {/* Official Google reCAPTCHA v2 Widget Container */}
+          <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+            <div ref={recaptchaRef} id="login-recaptcha-container" />
+            
+            {captchaVerified && (
+              <span style={{ fontSize: '0.8125rem', color: '#4ade80', fontWeight: 600 }}>
+                ✓ reCAPTCHA Verified Successfully
+              </span>
+            )}
           </div>
 
           <button type="submit" className="btn-submit" disabled={loading}>
