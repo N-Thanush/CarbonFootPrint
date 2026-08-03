@@ -1,4 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import ServicesPage from './pages/ServicesPage';
+import BenefitsPage from './pages/BenefitsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -9,25 +12,29 @@ import './index.css';
 /**
  * Main application component with routing.
  * Routes:
+ *   /                → Landing page
+ *   /services        → Services page
+ *   /benefits        → Benefits page
  *   /login           → Login page
  *   /register        → Registration page (3-step wizard)
  *   /set-password    → Account password activation page (via email link)
  *   /forgot-password → Forgot password request page
  *   /reset-password  → Reset password token landing page
  *   /admin           → Admin dashboard (requires ADMIN role)
- *   /                → Redirects to /login
  */
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/benefits" element={<BenefitsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ForgotPasswordPage />} />
         <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );
