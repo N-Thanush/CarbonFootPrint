@@ -267,7 +267,7 @@ export default function RegisterPage() {
         <div className="mat-illust-right">
           <div className="mat-auth-card">
             {/* Floating Header */}
-            <div className="mat-floating-header header-purple">
+            <div className="mat-floating-header header-green">
               <h2>Create Account</h2>
               <p>Fill in your profile details to register</p>
             </div>
@@ -510,7 +510,7 @@ export default function RegisterPage() {
                   <button type="button" className="mat-btn-secondary" onClick={handleBack}>
                     &larr; Back
                   </button>
-                  <button type="button" className="mat-btn-gradient btn-gradient-purple" onClick={handleNext}>
+                  <button type="button" className="mat-btn-gradient btn-gradient-green" onClick={handleNext}>
                     Next: Review & Submit &rarr;
                   </button>
                 </div>
