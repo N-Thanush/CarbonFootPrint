@@ -26,6 +26,28 @@ export default function AdminDashboard() {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
 
+  // Column Sorting state
+  const [sortField, setSortField] = useState('id');
+  const [sortOrder, setSortOrder] = useState('asc');
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  // Redirect if not admin or missing token
+  useEffect(() => {
+    if (!token || !adminUser || adminUser.role !== 'ADMIN') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/login', { replace: true });
+    }
+  }, [token, adminUser, navigate]);
+
   // Table state
   const [users, setUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,13 +73,36 @@ export default function AdminDashboard() {
 
   // Confirm delete modal state
   const [deleteConfirmUser, setDeleteConfirmUser] = useState(null);
+  // View user details popup modal state
+  const [viewUserModal, setViewUserModal] = useState(null);
+  // Confirm logout popup modal state
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  // View document preview popup modal state
+  const [viewDocumentModal, setViewDocumentModal] = useState(null);
 
-  // Redirect if not admin
-  useEffect(() => {
-    if (!token || !adminUser || adminUser.role !== 'ADMIN') {
-      navigate('/login', { replace: true });
+  // SVG Sort Icon Helper
+  const renderSortIcon = (field) => {
+    if (sortField !== field) {
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.35, marginLeft: '6px', verticalAlign: 'middle' }}>
+          <path d="M7 15l5 5 5-5H7z" />
+          <path d="M7 9l5-5 5 5H7z" />
+        </svg>
+      );
     }
-  }, [token, adminUser, navigate]);
+    if (sortOrder === 'asc') {
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#2E7D32', marginLeft: '6px', verticalAlign: 'middle' }}>
+          <path d="M7 14l5-5 5 5H7z" />
+        </svg>
+      );
+    }
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#2E7D32', marginLeft: '6px', verticalAlign: 'middle' }}>
+        <path d="M7 10l5 5 5-5H7z" />
+      </svg>
+    );
+  };
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
@@ -118,13 +163,13 @@ export default function AdminDashboard() {
     setError('');
     setSuccessMsg('');
     try {
-      const res = await adminApi.approveUser(token, userId);
-      setSuccessMsg(res.message || `${userName} approved successfully!`);
+      await adminApi.approveUser(token, userId);
+      setSuccessMsg(`User "${userName}" approved successfully! Notification email sent.`);
       fetchUsers();
     } catch (err) {
       setError(err.message || 'Failed to approve user');
     } finally {
-      setActionLoading((prev) => { const n = { ...prev }; delete n[userId]; return n; });
+      setActionLoading((prev) => ({ ...prev, [userId]: null }));
     }
   };
 
@@ -133,31 +178,31 @@ export default function AdminDashboard() {
     setError('');
     setSuccessMsg('');
     try {
-      const res = await adminApi.rejectUser(token, userId);
-      setSuccessMsg(res.message || `${userName} rejected.`);
+      await adminApi.rejectUser(token, userId);
+      setSuccessMsg(`User "${userName}" rejected. Status updated.`);
       fetchUsers();
     } catch (err) {
       setError(err.message || 'Failed to reject user');
     } finally {
-      setActionLoading((prev) => { const n = { ...prev }; delete n[userId]; return n; });
+      setActionLoading((prev) => ({ ...prev, [userId]: null }));
     }
   };
 
-  const handleDelete = async () => {
+  const handleDeleteConfirmed = async () => {
     if (!deleteConfirmUser) return;
     const { id: userId, fullName: userName } = deleteConfirmUser;
+    setDeleteConfirmUser(null);
     setActionLoading((prev) => ({ ...prev, [userId]: 'delete' }));
     setError('');
     setSuccessMsg('');
-    setDeleteConfirmUser(null);
     try {
-      const res = await adminApi.deleteUser(token, userId);
-      setSuccessMsg(res.message || `User '${userName}' deleted successfully.`);
+      await adminApi.deleteUser(token, userId);
+      setSuccessMsg(`User "${userName}" (ID: #${userId}) deleted permanently.`);
       fetchUsers();
     } catch (err) {
-      setError(err.message || 'Failed to delete user record');
+      setError(err.message || 'Failed to delete user');
     } finally {
-      setActionLoading((prev) => { const n = { ...prev }; delete n[userId]; return n; });
+      setActionLoading((prev) => ({ ...prev, [userId]: null }));
     }
   };
 
@@ -170,22 +215,43 @@ export default function AdminDashboard() {
   const formatDateTime = (dateStr) => {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleString('en-IN', {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
-  // Filtered users for search query
-  const filteredUsers = users.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      u.fullName?.toLowerCase().includes(q) ||
-      u.email?.toLowerCase().includes(q) ||
-      u.organization?.toLowerCase().includes(q) ||
-      u.phone?.includes(q)
-    );
-  });
+  // Sorted & Filtered Users
+  const sortedAndFilteredUsers = users
+    .filter((u) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        u.fullName?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.organization?.toLowerCase().includes(q) ||
+        u.phone?.includes(q) ||
+        u.accountStatus?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+
+      if (valA === undefined || valA === null) valA = '';
+      if (valB === undefined || valB === null) valB = '';
+
+      if (typeof valA === 'string') {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
 
   const startRecord = totalElements === 0 ? 0 : currentPage * pageSize + 1;
   const endRecord = Math.min((currentPage + 1) * pageSize, totalElements);
@@ -282,7 +348,7 @@ export default function AdminDashboard() {
               <span>{adminUser?.fullName || 'Admin'}</span>
             </div>
 
-            <button className="mat-btn-logout" onClick={handleLogout} title="Logout">
+            <button className="mat-btn-logout" onClick={() => setShowLogoutModal(true)} title="Logout">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -425,13 +491,27 @@ export default function AdminDashboard() {
                   <table className="mat-table">
                     <thead>
                       <tr>
-                        <th>ID</th>
-                        <th>User Profile</th>
-                        <th>Contact</th>
-                        <th>Organization</th>
-                        <th>Document Proof</th>
-                        <th>Status</th>
-                        <th>Registered Date</th>
+                        <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by ID">
+                          ID {renderSortIcon('id')}
+                        </th>
+                        <th onClick={() => handleSort('fullName')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Name">
+                          User Profile {renderSortIcon('fullName')}
+                        </th>
+                        <th onClick={() => handleSort('phone')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Contact">
+                          Contact {renderSortIcon('phone')}
+                        </th>
+                        <th onClick={() => handleSort('organization')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Organization">
+                          Organization {renderSortIcon('organization')}
+                        </th>
+                        <th onClick={() => handleSort('documentType')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Document Type">
+                          Document Proof {renderSortIcon('documentType')}
+                        </th>
+                        <th onClick={() => handleSort('accountStatus')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Status">
+                          Status {renderSortIcon('accountStatus')}
+                        </th>
+                        <th onClick={() => handleSort('createdAt')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Registration Date">
+                          Registered Date {renderSortIcon('createdAt')}
+                        </th>
                         <th style={{ textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
@@ -442,14 +522,14 @@ export default function AdminDashboard() {
                             <span className="mat-spinner" /> Loading users...
                           </td>
                         </tr>
-                      ) : filteredUsers.length === 0 ? (
+                      ) : sortedAndFilteredUsers.length === 0 ? (
                         <tr>
                           <td colSpan="8" className="mat-empty-td">
                             <p>No user records found matching criteria.</p>
                           </td>
                         </tr>
                       ) : (
-                        filteredUsers.map((user) => (
+                        sortedAndFilteredUsers.map((user) => (
                           <tr key={user.id}>
                             <td className="mat-td-id">#{user.id}</td>
                             <td className="mat-td-user">
@@ -468,18 +548,23 @@ export default function AdminDashboard() {
                               <div className="mat-doc-box">
                                 <span className="mat-doc-badge">{user.documentType || 'PROOF'}</span>
                                 {user.documentFileUrl ? (
-                                  <a
-                                    href={user.documentFileUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="mat-btn-doc-link"
-                                  >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                      <polyline points="14 2 14 8 20 8" />
-                                    </svg>
-                                    View Document
-                                  </a>
+                                  <button
+                                     type="button"
+                                     className="mat-btn-doc-link"
+                                     style={{ border: 'none', cursor: 'pointer', background: 'transparent' }}
+                                     onClick={() => setViewDocumentModal({
+                                       url: user.documentFileUrl,
+                                       userName: user.fullName,
+                                       docType: user.documentType || 'PROOF',
+                                       docNumber: user.documentNumber || 'N/A'
+                                     })}
+                                   >
+                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                       <path d="M14 2H6a2 2 0 0 1-2 2v16a2 2 0 0 1 2 2h12a2 2 0 0 1 2-2V8z" />
+                                       <polyline points="14 2 14 8 20 8" />
+                                     </svg>
+                                     View Document
+                                   </button>
                                 ) : (
                                   <span className="mat-no-doc">No file attached</span>
                                 )}
@@ -493,6 +578,19 @@ export default function AdminDashboard() {
                             <td className="mat-td-date">{formatDateTime(user.createdAt)}</td>
                             <td className="mat-td-actions">
                               <div className="mat-action-group">
+                                <button
+                                  className="mat-btn-act act-view"
+                                  onClick={() => setViewUserModal(user)}
+                                  title="View Detailed Profile"
+                                  style={{ background: '#E8F5E9', border: '1px solid #A5D6A7', color: '#2E7D32', fontWeight: 600 }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                  </svg>
+                                  Details
+                                </button>
+
                                 {user.accountStatus === 'PENDING' && (
                                   <>
                                     <button
@@ -599,6 +697,115 @@ export default function AdminDashboard() {
         </main>
       </div>
 
+      {/* ===== VIEW USER DETAILS MODAL WITH BACKDROP BLUR ===== */}
+      {viewUserModal && (
+        <div className="mat-modal-overlay" style={{ backdropFilter: 'blur(10px)', background: 'rgba(10, 15, 26, 0.75)', position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="mat-modal-card" style={{ width: '100%', maxWidth: '520px', background: '#ffffff', border: '1px solid #DFF5E1', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.2)', color: '#1e293b', maxHeight: '85vh', overflowY: 'auto' }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderBottom: '1px solid #E8F5E9', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                <div className="mat-user-avatar" style={{ width: '42px', height: '42px', fontSize: '1.125rem' }}>
+                  {viewUserModal.fullName?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', color: '#1B5E20', fontWeight: 800 }}>{viewUserModal.fullName}</h3>
+                  <span style={{ fontSize: '0.8125rem', color: '#64748b' }}>{viewUserModal.email}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewUserModal(null)}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontSize: '1.125rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Essential Details Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.875rem', marginBottom: '1.25rem' }}>
+              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Account Status</span>
+                <div style={{ marginTop: '0.2rem' }}>
+                  <span className={`mat-status-pill status-${viewUserModal.accountStatus?.toLowerCase()}`}>
+                    {viewUserModal.accountStatus}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Organization</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>{viewUserModal.organization || 'Individual'}</div>
+              </div>
+
+              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Industry</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>{viewUserModal.industryType || 'N/A'}</div>
+              </div>
+
+              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Country & State</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>
+                  {viewUserModal.state ? `${viewUserModal.state}, ` : ''}{viewUserModal.country || 'India'}
+                </div>
+              </div>
+
+              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Full Address</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>{viewUserModal.address || 'N/A'}</div>
+              </div>
+
+              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Identity Proof Document</span>
+                <div style={{ marginTop: '0.375rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <strong style={{ color: '#2E7D32', fontSize: '0.875rem' }}>{viewUserModal.documentType || 'PAN / AADHAAR'}</strong>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748b' }}>No: {viewUserModal.documentNumber || 'N/A'}</span>
+                  </div>
+                  {viewUserModal.documentFileUrl ? (
+                    <button
+                      type="button"
+                      className="mat-btn-doc-link"
+                      style={{ background: '#2E7D32', color: 'white', padding: '0.375rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                      onClick={() => setViewDocumentModal({
+                        url: viewUserModal.documentFileUrl,
+                        userName: viewUserModal.fullName,
+                        docType: viewUserModal.documentType || 'PROOF',
+                        docNumber: viewUserModal.documentNumber || 'N/A'
+                      })}
+                    >
+                      📄 View Proof File
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No file attached</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.875rem', borderTop: '1px solid #E8F5E9' }}>
+              <button className="mat-btn-secondary" onClick={() => setViewUserModal(null)} style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>
+                Close
+              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {viewUserModal.accountStatus === 'PENDING' && (
+                  <>
+                    <button className="mat-btn-act act-approve" onClick={() => { handleApprove(viewUserModal.id, viewUserModal.fullName); setViewUserModal(null); }}>
+                      Approve
+                    </button>
+                    <button className="mat-btn-act act-reject" onClick={() => { handleReject(viewUserModal.id, viewUserModal.fullName); setViewUserModal(null); }}>
+                      Reject
+                    </button>
+                  </>
+                )}
+                <button className="mat-btn-act act-delete" onClick={() => { setDeleteConfirmUser(viewUserModal); setViewUserModal(null); }}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== CONFIRM DELETE MODAL ===== */}
       {deleteConfirmUser && (
         <div className="mat-modal-overlay">
@@ -620,8 +827,99 @@ export default function AdminDashboard() {
               <button className="btn btn-secondary" onClick={() => setDeleteConfirmUser(null)}>
                 Cancel
               </button>
-              <button className="mat-btn-danger" onClick={handleDelete}>
+              <button className="mat-btn-danger" onClick={handleDeleteConfirmed}>
                 Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== CONFIRM LOGOUT MODAL ===== */}
+      {showLogoutModal && (
+        <div className="mat-modal-overlay">
+          <div className="mat-modal-card">
+            <div className="mat-modal-icon icon-danger" style={{ background: '#FFF3E0', borderColor: '#FFE0B2' }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F57C00" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your session?</p>
+            <div className="mat-modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowLogoutModal(false)}>
+                Cancel
+              </button>
+              <button
+                className="mat-btn-danger"
+                style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }}
+                onClick={handleLogout}
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== DOCUMENT PREVIEW POPUP MODAL ===== */}
+      {viewDocumentModal && (
+        <div className="mat-modal-overlay" style={{ backdropFilter: 'blur(10px)', background: 'rgba(10, 15, 26, 0.8)', position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="mat-modal-card" style={{ width: '100%', maxWidth: '820px', background: '#ffffff', border: '1px solid #DFF5E1', borderRadius: '24px', padding: '1.5rem', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.35)', color: '#1e293b', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderBottom: '1px solid #E8F5E9', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', color: '#1B5E20', fontWeight: 800 }}>
+                    {viewDocumentModal.docType} Identity Proof
+                  </h3>
+                  <span className="mat-doc-badge" style={{ background: '#E8F5E9', color: '#2E7D32', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                    {viewDocumentModal.userName}
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Document No: {viewDocumentModal.docNumber}</span>
+              </div>
+              <button
+                onClick={() => setViewDocumentModal(null)}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontSize: '1.125rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Document Viewer Frame */}
+            <div style={{ flex: 1, minHeight: '450px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              {viewDocumentModal.url ? (
+                <iframe
+                  src={viewDocumentModal.url}
+                  title="Document Preview"
+                  style={{ width: '100%', height: '100%', minHeight: '450px', border: 'none' }}
+                />
+              ) : (
+                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem' }}>
+                  No document URL attached for this user.
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '1rem', marginTop: '1rem', borderTop: '1px solid #E8F5E9' }}>
+              <a
+                href={viewDocumentModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: '0.8125rem', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+              >
+                ↗ Open in Full Window / Tab
+              </a>
+              <button
+                className="mat-btn-secondary"
+                onClick={() => setViewDocumentModal(null)}
+                style={{ padding: '0.5rem 1.25rem', fontSize: '0.8125rem', fontWeight: 600 }}
+              >
+                Close Preview
               </button>
             </div>
           </div>

@@ -27,6 +27,8 @@ public class UserProfileResponse {
     private String designation;
     private String industryType;
     private String address;
+    private String country;
+    private String state;
     private String organization;
     private String documentFileUrl;
     private String profilePictureUrl;

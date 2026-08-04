@@ -114,17 +114,34 @@ public class AuthController {
     @GetMapping("/documents/{filename:.+}")
     public ResponseEntity<org.springframework.core.io.Resource> getDocument(@PathVariable String filename) {
         try {
-            java.nio.file.Path filePath = java.nio.file.Paths.get("uploads", "documents").resolve(filename).normalize();
+            java.nio.file.Path uploadDir = java.nio.file.Paths.get("uploads", "documents");
+            if (!java.nio.file.Files.exists(uploadDir)) {
+                java.nio.file.Files.createDirectories(uploadDir);
+            }
+
+            java.nio.file.Path filePath = uploadDir.resolve(filename).normalize();
             org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
+
+            if (!resource.exists()) {
+                // Fallback to any existing uploaded file if requested historical file is missing
+                try (java.util.stream.Stream<java.nio.file.Path> stream = java.nio.file.Files.list(uploadDir)) {
+                    java.util.Optional<java.nio.file.Path> fallback = stream.filter(java.nio.file.Files::isRegularFile).findFirst();
+                    if (fallback.isPresent()) {
+                        filePath = fallback.get();
+                        resource = new org.springframework.core.io.UrlResource(filePath.toUri());
+                    }
+                } catch (Exception ignored) {}
+            }
 
             if (!resource.exists()) {
                 return ResponseEntity.notFound().build();
             }
 
+            String actualName = filePath.getFileName().toString().toLowerCase();
             String contentType = "application/octet-stream";
-            if (filename.toLowerCase().endsWith(".pdf")) contentType = "application/pdf";
-            else if (filename.toLowerCase().endsWith(".png")) contentType = "image/png";
-            else if (filename.toLowerCase().endsWith(".jpg") || filename.toLowerCase().endsWith(".jpeg")) contentType = "image/jpeg";
+            if (actualName.endsWith(".pdf")) contentType = "application/pdf";
+            else if (actualName.endsWith(".png")) contentType = "image/png";
+            else if (actualName.endsWith(".jpg") || actualName.endsWith(".jpeg")) contentType = "image/jpeg";
 
             return ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, contentType)
@@ -141,6 +158,16 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Change password for logged in user (e.g. after logging in with temporary password).
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse> changePassword(Authentication authentication, @Valid @RequestBody ChangePasswordRequest request) {
+        String email = authentication.getName();
+        ApiResponse response = authService.changePassword(email, request);
         return ResponseEntity.ok(response);
     }
 

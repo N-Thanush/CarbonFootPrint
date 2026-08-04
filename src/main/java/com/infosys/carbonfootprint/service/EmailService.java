@@ -28,23 +28,49 @@ public class EmailService {
     private JavaMailSender mailSender;
 
     /**
-     * Sends account approval notification email with password setup activation link.
+     * Sends account approval notification email with username and temporary password.
      */
-    public void sendApprovalEmail(User user, String activationToken) {
-        String setPasswordUrl = frontendUrl + "/set-password?token=" + activationToken;
-        String subject = "🎉 Account Approved - Set Your Password | Carbon Footprint Tracker";
+    public void sendApprovalEmail(User user, String tempPassword) {
+        String loginUrl = frontendUrl + "/login";
+        String subject = "🎉 Account Approved - Your Login Credentials | Carbon Footprint Tracker";
         String content = String.format(
                 "Dear %s,\n\n" +
                 "Congratulations! Your account registration has been APPROVED by the administrator.\n\n" +
-                "You can now set your password and access the Carbon Footprint platform:\n" +
+                "Here are your login credentials:\n" +
+                "👤 Username / Email: %s\n" +
+                "🔑 Temporary Password: %s\n\n" +
+                "Please log in at:\n" +
                 "👉 %s\n\n" +
-                "Note: This link will expire in 24 hours.\n\n" +
+                "Upon logging in with this temporary password, a window will pop up prompting you to set your new permanent password.\n\n" +
                 "Best regards,\n" +
                 "Carbon Footprint Team",
-                user.getFullName(), setPasswordUrl
+                user.getFullName(), user.getEmail(), tempPassword, loginUrl
         );
 
-        sendEmailOrLog(user.getEmail(), subject, content, setPasswordUrl);
+        sendEmailOrLog(user.getEmail(), subject, content, loginUrl);
+    }
+
+    /**
+     * Sends registration email with temporary password.
+     */
+    public void sendRegistrationTempPasswordEmail(User user, String tempPassword) {
+        String loginUrl = frontendUrl + "/login";
+        String subject = "🎉 Welcome to Carbon Footprint Tracker - Your Temporary Credentials";
+        String content = String.format(
+                "Dear %s,\n\n" +
+                "Thank you for registering with the Carbon Footprint Tracker platform!\n\n" +
+                "Here are your temporary login credentials:\n" +
+                "👤 Username / Email: %s\n" +
+                "🔑 Temporary Password: %s\n\n" +
+                "Please log in at:\n" +
+                "👉 %s\n\n" +
+                "Upon logging in with this temporary password, a window will pop up prompting you to set your new permanent password.\n\n" +
+                "Best regards,\n" +
+                "Carbon Footprint Team",
+                user.getFullName(), user.getEmail(), tempPassword, loginUrl
+        );
+
+        sendEmailOrLog(user.getEmail(), subject, content, loginUrl);
     }
 
     /**

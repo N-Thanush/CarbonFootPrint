@@ -50,7 +50,7 @@ public class DataSeeder {
     }
 
     private void seedAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder) {
-        String adminEmail = "admin@carbonfootprint.com";
+        String adminEmail = "admin@gmail.com";
         if (!userRepository.existsByEmail(adminEmail)) {
             User admin = User.builder()
                     .fullName("System Administrator")
@@ -58,7 +58,9 @@ public class DataSeeder {
                     .password(passwordEncoder.encode("admin123"))
                     .phone("0000000000")
                     .dateOfBirth(LocalDate.of(2000, 1, 1))
-                    .address("System")
+                    .address("System Administrator HQ")
+                    .country("India")
+                    .state("Karnataka")
                     .documentType(DocumentType.PAN)
                     .documentNumber("ADMIN0000A")
                     .role(Role.ADMIN)

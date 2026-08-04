@@ -10,6 +10,8 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -62,75 +64,160 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card" style={{ maxWidth: '520px', margin: '0 auto' }}>
-        <div className="auth-header">
-          <div className="auth-logo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.778-7.778z" />
-              <path d="M15.5 7.5l3 3" />
+    <div className="mat-illust-page">
+      {/* Top Navbar */}
+      <nav className="mat-illust-navbar">
+        <div className="mat-illust-nav-brand">
+          <div className="mat-nav-logo-box">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z" />
+              <circle cx="12" cy="9" r="2.5" />
             </svg>
           </div>
-          <h1 className="auth-title">{resetToken ? 'Reset Your Password' : 'Forgot Password'}</h1>
-          <p className="auth-subtitle">
-            {resetToken
-              ? 'Enter a new password for your account below.'
-              : 'Enter your registered email address to receive a password reset link.'}
-          </p>
+          <strong>Thanush - Carbon Footprint Platform</strong>
         </div>
 
-        {error && <div className="alert alert-error"><span>{error}</span></div>}
-        {success && <div className="alert alert-success"><span>{success}</span></div>}
+        <div className="mat-illust-nav-links">
+          <Link to="/" className="mat-nav-pill">
+            &larr; Home
+          </Link>
+          <Link to="/login" className="mat-nav-pill">
+            Sign In &rarr;
+          </Link>
+        </div>
+      </nav>
 
-        {!resetToken ? (
-          <form onSubmit={handleRequestReset} className="auth-form">
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-              {loading ? 'Sending Request...' : 'Send Reset Link'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleResetPassword} className="auth-form">
-            <div className="form-group">
-              <label className="form-label">New Password</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder="At least 8 characters"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Confirm Password</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder="Re-enter new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-            </div>
-            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-              {loading ? 'Resetting Password...' : 'Reset Password'}
-            </button>
-          </form>
-        )}
+      {/* Main Container */}
+      <div className="mat-auth-page">
+        <div className="mat-auth-card" style={{ maxWidth: '480px' }}>
+          {/* Floating Header Banner */}
+          <div className="mat-floating-header header-green">
+            <h2>{resetToken ? 'Reset Password' : 'Forgot Password?'}</h2>
+            <p>
+              {resetToken
+                ? 'Create a new secure password for your account'
+                : 'Enter your registered email address to receive a reset link'}
+            </p>
+          </div>
 
-        <div className="auth-footer">
-          <p>Remembered your password? <Link to="/login" className="auth-link">Log In</Link></p>
+          {/* Alerts */}
+          {error && (
+            <div className="alert alert-error" style={{ marginBottom: '1.25rem' }}>
+              <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {success && (
+            <div className="alert alert-success" style={{ marginBottom: '1.25rem' }}>
+              <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span>{success}</span>
+            </div>
+          )}
+
+          {!resetToken ? (
+            <form onSubmit={handleRequestReset} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className="mat-input-group">
+                <label htmlFor="reset-email">Email Address <span className="req">*</span></label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  className="mat-input"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <button type="submit" className="mat-btn-gradient btn-gradient-green" style={{ width: '100%', padding: '0.875rem' }} disabled={loading}>
+                {loading ? 'Sending Reset Link...' : 'Send Reset Link →'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className="mat-input-group">
+                <label htmlFor="new-password">New Password <span className="req">*</span></label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    id="new-password"
+                    type={showNewPass ? 'text' : 'password'}
+                    className="mat-input"
+                    placeholder="At least 8 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    style={{ paddingRight: '2.75rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    tabIndex={-1}
+                    style={{
+                      position: 'absolute',
+                      right: '0.875rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {showNewPass ? '👁️' : '🙈'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mat-input-group">
+                <label htmlFor="confirm-password">Confirm New Password <span className="req">*</span></label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    id="confirm-password"
+                    type={showConfirmPass ? 'text' : 'password'}
+                    className="mat-input"
+                    placeholder="Re-enter new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    style={{ paddingRight: '2.75rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                    tabIndex={-1}
+                    style={{
+                      position: 'absolute',
+                      right: '0.875rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {showConfirmPass ? '👁️' : '🙈'}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="mat-btn-gradient btn-gradient-green" style={{ width: '100%', padding: '0.875rem' }} disabled={loading}>
+                {loading ? 'Resetting Password...' : 'Confirm Reset Password →'}
+              </button>
+            </form>
+          )}
+
+          <div className="mat-wizard-footer" style={{ marginTop: '1.5rem' }}>
+            <p>Remembered your password? <Link to="/login">Sign In</Link></p>
+          </div>
         </div>
       </div>
     </div>

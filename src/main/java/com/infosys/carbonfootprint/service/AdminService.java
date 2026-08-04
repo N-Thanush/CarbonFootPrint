@@ -4,6 +4,9 @@ import com.infosys.carbonfootprint.dto.ApiResponse;
 import com.infosys.carbonfootprint.dto.UserProfileResponse;
 import com.infosys.carbonfootprint.entity.User;
 import com.infosys.carbonfootprint.enums.AccountStatus;
+import com.infosys.carbonfootprint.repository.ActivityLogRepository;
+import com.infosys.carbonfootprint.repository.GoalRepository;
+import com.infosys.carbonfootprint.repository.UserBadgeRepository;
 import com.infosys.carbonfootprint.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +20,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
+
 /**
  * Service for admin operations — managing user approvals and rejections.
  */
@@ -27,10 +32,23 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final ActivityLogRepository activityLogRepository;
+    private final GoalRepository goalRepository;
+    private final UserBadgeRepository userBadgeRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AdminService(UserRepository userRepository, EmailService emailService) {
+    public AdminService(UserRepository userRepository,
+                        EmailService emailService,
+                        ActivityLogRepository activityLogRepository,
+                        GoalRepository goalRepository,
+                        UserBadgeRepository userBadgeRepository,
+                        PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.activityLogRepository = activityLogRepository;
+        this.goalRepository = goalRepository;
+        this.userBadgeRepository = userBadgeRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
@@ -60,8 +78,21 @@ public class AdminService {
     }
 
     /**
-     * Approves a user's account — changes status from PENDING to APPROVED
-     * and sends an approval email with activation link token.
+     * Generates a random temporary password (e.g. Temp#8x9K).
+     */
+    private String generateTempPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        StringBuilder sb = new StringBuilder("Temp#");
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        for (int i = 0; i < 6; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Approves a user's account — changes status from PENDING to APPROVED,
+     * generates a temporary password, and sends approval email with Username & Temporary Password.
      */
     @Transactional
     public ApiResponse approveUser(Long userId) {
@@ -72,21 +103,19 @@ public class AdminService {
             return ApiResponse.success("User is already approved");
         }
 
+        String tempPassword = generateTempPassword();
+        user.setPassword(passwordEncoder.encode(tempPassword));
+        user.setMustChangePassword(true);
         user.setAccountStatus(AccountStatus.APPROVED);
-
-        // Generate activation token for password setup if password is not set
-        String token = UUID.randomUUID().toString();
-        user.setActivationToken(token);
-        user.setActivationTokenExpiry(LocalDateTime.now().plusHours(24));
 
         userRepository.save(user);
 
-        // Send approval email with set password activation link
-        emailService.sendApprovalEmail(user, token);
+        // Send approval email with Username and Temporary Password
+        emailService.sendApprovalEmail(user, tempPassword);
 
-        logger.info("Admin approved user: {} (ID: {}). Activation email sent.", user.getEmail(), userId);
+        logger.info("Admin approved user: {} (ID: {}). Temporary password generated: [{}] & email sent.", user.getEmail(), userId, tempPassword);
 
-        return ApiResponse.success("User '" + user.getFullName() + "' approved successfully! An email with activation link has been sent to " + user.getEmail());
+        return ApiResponse.success("User '" + user.getFullName() + "' approved successfully! Email with Username and Temporary Password (" + tempPassword + ") sent to " + user.getEmail());
     }
 
     /**
@@ -120,6 +149,10 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
 
+        activityLogRepository.deleteByUserId(userId);
+        goalRepository.deleteByUserId(userId);
+        userBadgeRepository.deleteByUserId(userId);
+
         userRepository.delete(user);
         logger.info("Admin deleted user record: {} (ID: {})", user.getEmail(), userId);
 
@@ -140,6 +173,8 @@ public class AdminService {
                 .designation(user.getDesignation())
                 .industryType(user.getIndustryType())
                 .address(user.getAddress())
+                .country(user.getCountry())
+                .state(user.getState())
                 .organization(user.getOrganization())
                 .documentFileUrl(user.getDocumentFileUrl())
                 .profilePictureUrl(user.getProfilePictureUrl())

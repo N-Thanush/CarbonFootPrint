@@ -44,6 +44,10 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String address;
 
+    private String country;
+
+    private String state;
+
     // Optional — for corporate/organization users
     private String organization;
 
@@ -87,6 +91,10 @@ public class User {
     @Column(nullable = false)
     @Builder.Default
     private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean mustChangePassword = false;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

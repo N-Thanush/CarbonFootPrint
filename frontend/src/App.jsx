@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage';
 import AdminDashboard from './pages/AdminDashboard';
 import SetPasswordPage from './pages/SetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import './index.css';
 
 /**
@@ -17,6 +18,7 @@ import './index.css';
  *   /benefits        → Benefits page
  *   /login           → Login page
  *   /register        → Registration page (3-step wizard)
+ *   /change-password → Change password page (with Success Popup)
  *   /set-password    → Account password activation page (via email link)
  *   /forgot-password → Forgot password request page
  *   /reset-password  → Reset password token landing page
@@ -31,6 +33,7 @@ function App() {
         <Route path="/benefits" element={<BenefitsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ForgotPasswordPage />} />

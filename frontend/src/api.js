@@ -82,6 +82,18 @@ export const authApi = {
     });
     return handleResponse(response);
   },
+
+  changePassword: async (token, payload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
 };
 
 /**

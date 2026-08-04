@@ -52,6 +52,9 @@ public class SecurityConfig {
                                 // Enable CORS
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
+                                // Disable frameOptions to allow inline iframe preview of document proof files
+                                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
+
                                 // Stateless session — no server-side session
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))

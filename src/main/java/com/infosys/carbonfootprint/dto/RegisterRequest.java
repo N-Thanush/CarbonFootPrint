@@ -46,6 +46,10 @@ public class RegisterRequest {
     @Size(max = 500, message = "Address must not exceed 500 characters")
     private String address;
 
+    private String country;
+
+    private String state;
+
     // Optional field
     @Size(max = 200, message = "Organization name must not exceed 200 characters")
     private String organization;

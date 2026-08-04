@@ -49,6 +49,16 @@ public class AuthService {
         this.emailService = emailService;
     }
 
+    private String generateTempPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        StringBuilder sb = new StringBuilder("Temp#");
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        for (int i = 0; i < 6; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
+
     /**
      * Registers a new user.
      *
@@ -71,28 +81,24 @@ public class AuthService {
             throw new IllegalArgumentException("An account with this email already exists");
         }
 
-        // 2. Check duplicate email
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("An account with this email already exists");
-        }
-
-        // 3. Encode optional password if user provided one
-        String encodedPassword = null;
-        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
-            encodedPassword = passwordEncoder.encode(request.getPassword().trim());
-        }
+        // 3. Generate initial temporary password placeholder for user
+        String tempPassword = generateTempPassword();
+        String encodedPassword = passwordEncoder.encode(tempPassword);
 
         // 4. Build user entity
         User user = User.builder()
                 .fullName(request.getFullName().trim())
                 .email(request.getEmail().trim().toLowerCase())
                 .password(encodedPassword)
+                .mustChangePassword(true)
                 .phone(request.getPhone().trim())
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender() != null ? request.getGender().trim() : null)
                 .designation(request.getDesignation() != null ? request.getDesignation().trim() : null)
                 .industryType(request.getIndustryType() != null ? request.getIndustryType().trim() : null)
                 .address(request.getAddress().trim())
+                .country(request.getCountry() != null ? request.getCountry().trim() : null)
+                .state(request.getState() != null ? request.getState().trim() : null)
                 .organization(request.getOrganization() != null ? request.getOrganization().trim() : null)
                 .documentFileUrl(request.getDocumentFileUrl())
                 .profilePictureUrl(request.getProfilePictureUrl())
@@ -109,8 +115,8 @@ public class AuthService {
         logger.info("New user registered: {} (status: PENDING)", user.getEmail());
 
         return ApiResponse.success(
-                "Registration successful! Your profile & documents have been submitted for admin approval. " +
-                "Once approved, you will receive an email with a link to set your password and access your account.");
+                "Registration successful! Your profile & document proof have been submitted for admin approval. " +
+                "Once approved by the administrator, an email with your Username and Temporary Password will be sent to " + user.getEmail() + ".");
     }
 
     /**
@@ -214,7 +220,28 @@ public class AuthService {
         logger.info("User logged in: {}", user.getEmail());
 
         return new AuthResponse(token, user.getId(), user.getFullName(),
-                user.getEmail(), user.getRole().name());
+                user.getEmail(), user.getRole().name(),
+                Boolean.TRUE.equals(user.getMustChangePassword()));
+    }
+
+    /**
+     * Changes user's password and clears mustChangePassword flag.
+     */
+    @Transactional
+    public ApiResponse changePassword(String email, ChangePasswordRequest request) {
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("New password and confirm password do not match.");
+        }
+
+        User user = userRepository.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword().trim()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+
+        logger.info("Password changed successfully for user: {}", user.getEmail());
+        return ApiResponse.success("Password changed successfully!");
     }
 
     /**
@@ -234,6 +261,8 @@ public class AuthService {
                 .designation(user.getDesignation())
                 .industryType(user.getIndustryType())
                 .address(user.getAddress())
+                .country(user.getCountry())
+                .state(user.getState())
                 .organization(user.getOrganization())
                 .documentFileUrl(user.getDocumentFileUrl())
                 .profilePictureUrl(user.getProfilePictureUrl())
