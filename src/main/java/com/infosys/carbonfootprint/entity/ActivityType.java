@@ -27,6 +27,9 @@ public class ActivityType {
     @JoinColumn(name = "category_id", nullable = false)
     private ActivityCategory category;
 
+    @Column(length = 20)
+    private String activityCode;
+
     @Column(nullable = false, length = 100)
     private String name;
 
@@ -37,9 +40,30 @@ public class ActivityType {
     @Column(nullable = false, length = 30)
     private String unit;
 
+    private Double minQuantity;
+
+    private Double maxQuantity;
+
+    private Double defaultQuantity;
+
+    @Builder.Default
+    private Integer displayOrder = 0;
+
+    @Column(length = 50)
+    private String icon;
+
     @Column(nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    @Column(length = 500)
+    private String remarks;
+
+    @Column(length = 100)
+    private String createdBy;
+
+    @Column(length = 100)
+    private String updatedBy;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

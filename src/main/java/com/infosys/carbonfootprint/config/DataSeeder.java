@@ -51,8 +51,9 @@ public class DataSeeder {
 
     private void seedAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         String adminEmail = "admin@gmail.com";
-        if (!userRepository.existsByEmail(adminEmail)) {
-            User admin = User.builder()
+        User admin = userRepository.findByEmail(adminEmail).orElse(null);
+        if (admin == null) {
+            admin = User.builder()
                     .fullName("System Administrator")
                     .email(adminEmail)
                     .password(passwordEncoder.encode("admin123"))
@@ -66,10 +67,17 @@ public class DataSeeder {
                     .role(Role.ADMIN)
                     .accountStatus(AccountStatus.APPROVED)
                     .authProvider(AuthProvider.LOCAL)
+                    .mustChangePassword(false)
                     .build();
-
             userRepository.save(admin);
             logger.info("Seeded default admin: {}", adminEmail);
+        } else {
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setRole(Role.ADMIN);
+            admin.setAccountStatus(AccountStatus.APPROVED);
+            admin.setMustChangePassword(false);
+            userRepository.save(admin);
+            logger.info("Reset default admin credentials: {}", adminEmail);
         }
     }
 

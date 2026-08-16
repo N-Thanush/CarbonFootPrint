@@ -122,17 +122,19 @@ public class EmailService {
         logger.info("=======================================================\n");
 
         if (mailSender != null && !mailFrom.contains("your_email@gmail.com")) {
-            try {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setFrom(mailFrom);
-                message.setTo(to);
-                message.setSubject(subject);
-                message.setText(body);
-                mailSender.send(message);
-                logger.info("Real email successfully delivered via SMTP to {}", to);
-            } catch (Exception e) {
-                logger.warn("Could not send SMTP email to {}: {}. (Token link is logged above)", to, e.getMessage());
-            }
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    SimpleMailMessage message = new SimpleMailMessage();
+                    message.setFrom(mailFrom);
+                    message.setTo(to);
+                    message.setSubject(subject);
+                    message.setText(body);
+                    mailSender.send(message);
+                    logger.info("Real email successfully delivered via SMTP to {}", to);
+                } catch (Exception e) {
+                    logger.warn("Could not send SMTP email to {}: {}. (Token link is logged above)", to, e.getMessage());
+                }
+            });
         }
     }
 }

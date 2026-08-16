@@ -28,9 +28,12 @@ import java.util.List;
 public class AdminController {
 
     private final AdminService adminService;
+    private final com.infosys.carbonfootprint.service.UserActivityLogService activityLogService;
 
-    public AdminController(AdminService adminService) {
+    public AdminController(AdminService adminService,
+                           com.infosys.carbonfootprint.service.UserActivityLogService activityLogService) {
         this.adminService = adminService;
+        this.activityLogService = activityLogService;
     }
 
     /**
@@ -96,5 +99,16 @@ public class AdminController {
     public ResponseEntity<ApiResponse> deleteUser(@PathVariable Long id) {
         ApiResponse response = adminService.deleteUser(id);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get paginated list of all user activity logs for admin audit
+     */
+    @GetMapping("/activity-logs")
+    public ResponseEntity<Page<com.infosys.carbonfootprint.dto.ActivityLogResponse>> getActivityLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return ResponseEntity.ok(activityLogService.getAllActivityLogs(pageRequest));
     }
 }

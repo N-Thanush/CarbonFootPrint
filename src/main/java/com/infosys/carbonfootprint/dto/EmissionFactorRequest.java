@@ -21,11 +21,20 @@ public class EmissionFactorRequest {
     @PositiveOrZero(message = "Emission factor must be positive or zero")
     private Double kgCo2PerUnit;
 
+    private String unit;
+
     @Size(max = 100, message = "Source cannot exceed 100 characters")
     private String source;
+
+    private String sourceVersion;
 
     private LocalDate effectiveFrom;
     private LocalDate effectiveTo;
 
     private Boolean active;
+
+    @Size(max = 500, message = "Remarks cannot exceed 500 characters")
+    private String remarks;
+
+    private String createdBy;
 }

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../api';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 export default function ForgotPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -15,6 +16,20 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   // Request reset email flow
   const handleRequestReset = async (e) => {
@@ -74,7 +89,7 @@ export default function ForgotPasswordPage() {
               <circle cx="12" cy="9" r="2.5" />
             </svg>
           </div>
-          <strong>Thanush - Carbon Footprint Platform</strong>
+          <strong>Carbon Footprint Platform</strong>
         </div>
 
         <div className="mat-illust-nav-links">
@@ -100,7 +115,7 @@ export default function ForgotPasswordPage() {
             </p>
           </div>
 
-          {/* Alerts */}
+          {/* Inline Error Alert */}
           {error && (
             <div className="alert alert-error" style={{ marginBottom: '1.25rem' }}>
               <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -109,16 +124,6 @@ export default function ForgotPasswordPage() {
                 <line x1="9" y1="9" x2="15" y2="15" />
               </svg>
               <span>{error}</span>
-            </div>
-          )}
-
-          {success && (
-            <div className="alert alert-success" style={{ marginBottom: '1.25rem' }}>
-              <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              <span>{success}</span>
             </div>
           )}
 
@@ -144,13 +149,13 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div className="mat-input-group">
-                <label htmlFor="new-password">New Password <span className="req">*</span></label>
+                <label htmlFor="new-password">Enter Password <span className="req">*</span></label>
                 <div style={{ position: 'relative' }}>
                   <input
                     id="new-password"
                     type={showNewPass ? 'text' : 'password'}
                     className="mat-input"
-                    placeholder="At least 8 characters"
+                    placeholder="Enter new password (min. 8 characters)"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
@@ -160,6 +165,7 @@ export default function ForgotPasswordPage() {
                     type="button"
                     onClick={() => setShowNewPass(!showNewPass)}
                     tabIndex={-1}
+                    aria-label="Toggle password visibility"
                     style={{
                       position: 'absolute',
                       right: '0.875rem',
@@ -168,16 +174,19 @@ export default function ForgotPasswordPage() {
                       background: 'none',
                       border: 'none',
                       color: '#64748b',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      fontSize: '1.1rem'
                     }}
                   >
-                    {showNewPass ? '👁️' : '🙈'}
+                    {showNewPass ? <FaEyeSlash /> : <FaEye />}
                   </button>
                 </div>
               </div>
 
               <div className="mat-input-group">
-                <label htmlFor="confirm-password">Confirm New Password <span className="req">*</span></label>
+                <label htmlFor="confirm-password">Re-enter Password <span className="req">*</span></label>
                 <div style={{ position: 'relative' }}>
                   <input
                     id="confirm-password"
@@ -193,6 +202,7 @@ export default function ForgotPasswordPage() {
                     type="button"
                     onClick={() => setShowConfirmPass(!showConfirmPass)}
                     tabIndex={-1}
+                    aria-label="Toggle confirm password visibility"
                     style={{
                       position: 'absolute',
                       right: '0.875rem',
@@ -201,10 +211,13 @@ export default function ForgotPasswordPage() {
                       background: 'none',
                       border: 'none',
                       color: '#64748b',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      fontSize: '1.1rem'
                     }}
                   >
-                    {showConfirmPass ? '👁️' : '🙈'}
+                    {showConfirmPass ? <FaEyeSlash /> : <FaEye />}
                   </button>
                 </div>
               </div>
@@ -220,6 +233,46 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
       </div>
+
+      {/* FLOATING TOAST NOTIFICATION (TOP-RIGHT) */}
+      {(success || error) && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '1.5rem',
+            right: '1.5rem',
+            backgroundColor: '#1E293B',
+            border: '1px solid #334155',
+            borderLeft: success ? '4px solid #10B981' : '4px solid #EF4444',
+            color: '#F8FAFC',
+            padding: '0.85rem 1.25rem',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            zIndex: 9999,
+          }}
+        >
+          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+            {success ? `✓ ${success}` : `✕ ${error}`}
+          </span>
+          <button
+            onClick={() => { setSuccess(''); setError(''); }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94A3B8',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              lineHeight: 1,
+              padding: '0 0 0 0.5rem',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

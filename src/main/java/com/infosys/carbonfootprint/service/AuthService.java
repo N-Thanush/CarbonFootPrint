@@ -7,16 +7,12 @@ import com.infosys.carbonfootprint.enums.AuthProvider;
 import com.infosys.carbonfootprint.enums.Role;
 import com.infosys.carbonfootprint.repository.UserRepository;
 import com.infosys.carbonfootprint.security.JwtTokenProvider;
-import com.infosys.carbonfootprint.util.DocumentValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Service handling user registration, login, and profile retrieval.
- */
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -31,20 +27,17 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
-    private final DocumentValidator documentValidator;
     private final CaptchaService captchaService;
     private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider jwtTokenProvider,
-                       DocumentValidator documentValidator,
                        CaptchaService captchaService,
                        EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
-        this.documentValidator = documentValidator;
         this.captchaService = captchaService;
         this.emailService = emailService;
     }
@@ -132,6 +125,7 @@ public class AuthService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
         user.setActivationToken(null);
         user.setActivationTokenExpiry(null);
         user.setAccountStatus(AccountStatus.APPROVED);
@@ -175,6 +169,7 @@ public class AuthService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
         user.setResetPasswordToken(null);
         user.setResetPasswordTokenExpiry(null);
 

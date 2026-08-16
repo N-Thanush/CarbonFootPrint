@@ -57,14 +57,6 @@ function Navbar() {
                 </span>
               </div>
 
-              {user.role === 'ADMIN' && (
-                <Link to="/admin">
-                  <button className="register-btn" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', borderColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>
-                    Admin Dashboard
-                  </button>
-                </Link>
-              )}
-
               <button
                 className="login-btn"
                 onClick={() => setShowLogoutModal(true)}

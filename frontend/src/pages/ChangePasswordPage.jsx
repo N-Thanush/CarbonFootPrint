@@ -1,19 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../api';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ newPassword: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
   const token = localStorage.getItem('token');
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   })();
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -80,7 +97,7 @@ export default function ChangePasswordPage() {
               <circle cx="12" cy="9" r="2.5" />
             </svg>
           </div>
-          <strong>Thanush - Carbon Footprint Platform</strong>
+          <strong>Carbon Footprint Platform</strong>
         </div>
 
         <div className="mat-illust-nav-links">
@@ -133,6 +150,7 @@ export default function ChangePasswordPage() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   tabIndex={-1}
+                  aria-label="Toggle password visibility"
                   style={{
                     position: 'absolute',
                     right: '0.875rem',
@@ -141,10 +159,13 @@ export default function ChangePasswordPage() {
                     background: 'none',
                     border: 'none',
                     color: '#64748b',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: '1.1rem'
                   }}
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? <FaEyeSlash /> : <FaEye />}
                 </button>
               </div>
             </div>
@@ -153,15 +174,39 @@ export default function ChangePasswordPage() {
               <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>
                 Re-enter New Password <span className="req">*</span>
               </label>
-              <input
-                className="mat-input"
-                type={showPassword ? 'text' : 'password'}
-                name="confirmPassword"
-                placeholder="Re-enter new password"
-                value={form.confirmPassword}
-                onChange={handleChange}
-                required
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="mat-input"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  name="confirmPassword"
+                  placeholder="Re-enter new password"
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  required
+                  style={{ paddingRight: '2.75rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  tabIndex={-1}
+                  aria-label="Toggle confirm password visibility"
+                  style={{
+                    position: 'absolute',
+                    right: '0.875rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: '1.1rem'
+                  }}
+                >
+                  {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -197,6 +242,46 @@ export default function ChangePasswordPage() {
               OK / Continue to Dashboard &rarr;
             </button>
           </div>
+        </div>
+      )}
+
+      {/* FLOATING TOAST NOTIFICATION (TOP-RIGHT) */}
+      {(success || error) && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '1.5rem',
+            right: '1.5rem',
+            backgroundColor: '#1E293B',
+            border: '1px solid #334155',
+            borderLeft: success ? '4px solid #10B981' : '4px solid #EF4444',
+            color: '#F8FAFC',
+            padding: '0.85rem 1.25rem',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            zIndex: 9999,
+          }}
+        >
+          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+            {success ? `✓ ${success}` : `✕ ${error}`}
+          </span>
+          <button
+            onClick={() => { setSuccess(''); setError(''); }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94A3B8',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              lineHeight: 1,
+              padding: '0 0 0 0.5rem',
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

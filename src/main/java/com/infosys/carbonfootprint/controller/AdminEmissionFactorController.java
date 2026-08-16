@@ -24,11 +24,12 @@ public class AdminEmissionFactorController {
 
     @GetMapping
     public ResponseEntity<Page<EmissionFactorResponse>> getEmissionFactors(
+            @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Long activityTypeId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by("id").descending());
-        return ResponseEntity.ok(emissionFactorService.getEmissionFactors(activityTypeId, pageRequest));
+        return ResponseEntity.ok(emissionFactorService.getEmissionFactors(categoryId, activityTypeId, pageRequest));
     }
 
     @PostMapping

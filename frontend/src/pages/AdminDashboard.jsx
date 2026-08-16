@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { adminApi } from '../api';
 import AdminCategories from './admin/AdminCategories';
 import AdminActivityTypes from './admin/AdminActivityTypes';
 import AdminEmissionFactors from './admin/AdminEmissionFactors';
+import AdminActivityLogs from './admin/AdminActivityLogs';
 
 const STATUS_TABS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 const PAGE_SIZES = [10, 50, 100];
@@ -12,13 +13,26 @@ const MAIN_NAVS = [
   { id: 'categories', label: 'Activity Categories', icon: 'category' },
   { id: 'activityTypes', label: 'Activity Types', icon: 'type' },
   { id: 'emissionFactors', label: 'Emission Factors', icon: 'factor' },
+  { id: 'activityLogs', label: 'Activity Logs', icon: 'log' },
 ];
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Active main tab navigation
-  const [activeNav, setActiveNav] = useState('users');
+  // Sync active main tab navigation with URL search params (?tab=...)
+  const tabParam = searchParams.get('tab');
+  const activeNav = MAIN_NAVS.some((n) => n.id === tabParam) ? tabParam : 'users';
+
+  const handleNavChange = (navId) => {
+    if (navId === 'users') {
+      setSearchParams({});
+    } else {
+      setSearchParams({ tab: navId });
+    }
+  };
+
+  const [selectedCategoryForTypes, setSelectedCategoryForTypes] = useState('');
 
   // Auth
   const [token] = useState(() => localStorage.getItem('token'));
@@ -59,6 +73,20 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    if (successMsg) {
+      const timer = setTimeout(() => setSuccessMsg(''), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [successMsg]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   // Statistics counters
   const [stats, setStats] = useState({
@@ -197,7 +225,7 @@ export default function AdminDashboard() {
     setSuccessMsg('');
     try {
       await adminApi.deleteUser(token, userId);
-      setSuccessMsg(`User "${userName}" (ID: #${userId}) deleted permanently.`);
+      setSuccessMsg(`User "${userName}" deleted permanently.`);
       fetchUsers();
     } catch (err) {
       setError(err.message || 'Failed to delete user');
@@ -268,7 +296,7 @@ export default function AdminDashboard() {
             </svg>
           </div>
           <div className="mat-brand-text">
-            <strong>Material Admin</strong>
+            <strong>Admin Dashboard</strong>
             <span>Carbon Footprint</span>
           </div>
         </div>
@@ -280,7 +308,7 @@ export default function AdminDashboard() {
             <button
               key={nav.id}
               className={`mat-nav-item ${activeNav === nav.id ? 'active' : ''}`}
-              onClick={() => setActiveNav(nav.id)}
+              onClick={() => handleNavChange(nav.id)}
             >
               <div className="mat-nav-icon">
                 {nav.icon === 'users' && (
@@ -322,9 +350,8 @@ export default function AdminDashboard() {
         <header className="mat-navbar">
           <div className="mat-navbar-left">
             <div className="mat-breadcrumbs">
-              <span>Pages</span> / <span className="active-path">{MAIN_NAVS.find(n => n.id === activeNav)?.label}</span>
+              <span>Admin</span> / <span className="active-path">{MAIN_NAVS.find(n => n.id === activeNav)?.label}</span>
             </div>
-            <h2 className="mat-page-title">{MAIN_NAVS.find(n => n.id === activeNav)?.label}</h2>
           </div>
 
           <div className="mat-navbar-right">
@@ -360,9 +387,23 @@ export default function AdminDashboard() {
 
         {/* Content Section */}
         <main className="mat-content">
-          {activeNav === 'categories' && <AdminCategories token={token} />}
-          {activeNav === 'activityTypes' && <AdminActivityTypes token={token} />}
+          {activeNav === 'categories' && (
+            <AdminCategories
+              token={token}
+              onNavigateToTypes={(category) => {
+                setSelectedCategoryForTypes(category.id);
+                handleNavChange('activityTypes');
+              }}
+            />
+          )}
+          {activeNav === 'activityTypes' && (
+            <AdminActivityTypes
+              token={token}
+              initialCategoryId={selectedCategoryForTypes}
+            />
+          )}
           {activeNav === 'emissionFactors' && <AdminEmissionFactors token={token} />}
+          {activeNav === 'activityLogs' && <AdminActivityLogs token={token} />}
 
           {activeNav === 'users' && (
             <>
@@ -424,27 +465,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Alert Banners */}
-              {error && (
-                <div className="alert alert-error" style={{ marginBottom: '1.25rem' }}>
-                  <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="15" y1="9" x2="9" y2="15" />
-                    <line x1="9" y1="9" x2="15" y2="15" />
-                  </svg>
-                  <span>{error}</span>
-                </div>
-              )}
-              {successMsg && (
-                <div className="alert alert-success" style={{ marginBottom: '1.25rem' }}>
-                  <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                  </svg>
-                  <span>{successMsg}</span>
-                </div>
-              )}
-
               {/* ===== MATERIAL USER TABLE CARD ===== */}
               <div className="mat-card-table">
                 {/* Header Banner */}
@@ -487,62 +507,66 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Table */}
-                <div className="mat-table-responsive">
+                <div className={`mat-table-responsive ${pageSize >= 50 ? 'table-scroll-large' : ''}`}>
                   <table className="mat-table">
                     <thead>
                       <tr>
-                        <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by ID">
-                          ID {renderSortIcon('id')}
-                        </th>
-                        <th onClick={() => handleSort('fullName')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Name">
+                        <th onClick={() => handleSort('fullName')} style={{ cursor: 'pointer', userSelect: 'none', width: '22%' }} title="Click to sort by Name">
                           User Profile {renderSortIcon('fullName')}
                         </th>
-                        <th onClick={() => handleSort('phone')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Contact">
+                        <th onClick={() => handleSort('phone')} style={{ cursor: 'pointer', userSelect: 'none', width: '13%' }} title="Click to sort by Contact">
                           Contact {renderSortIcon('phone')}
                         </th>
-                        <th onClick={() => handleSort('organization')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Organization">
+                        <th onClick={() => handleSort('organization')} style={{ cursor: 'pointer', userSelect: 'none', width: '16%' }} title="Click to sort by Organization">
                           Organization {renderSortIcon('organization')}
                         </th>
-                        <th onClick={() => handleSort('documentType')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Document Type">
+                        <th onClick={() => handleSort('documentType')} style={{ cursor: 'pointer', userSelect: 'none', width: '15%' }} title="Click to sort by Document Type">
                           Document Proof {renderSortIcon('documentType')}
                         </th>
-                        <th onClick={() => handleSort('accountStatus')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Status">
+                        <th onClick={() => handleSort('accountStatus')} style={{ cursor: 'pointer', userSelect: 'none', width: '11%' }} title="Click to sort by Status">
                           Status {renderSortIcon('accountStatus')}
                         </th>
-                        <th onClick={() => handleSort('createdAt')} style={{ cursor: 'pointer', userSelect: 'none' }} title="Click to sort by Registration Date">
+                        <th onClick={() => handleSort('createdAt')} style={{ cursor: 'pointer', userSelect: 'none', width: '13%' }} title="Click to sort by Registration Date">
                           Registered Date {renderSortIcon('createdAt')}
                         </th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
+                        <th style={{ textAlign: 'right', width: '10%' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan="8" className="mat-empty-td">
+                          <td colSpan="7" className="mat-empty-td">
                             <span className="mat-spinner" /> Loading users...
                           </td>
                         </tr>
                       ) : sortedAndFilteredUsers.length === 0 ? (
                         <tr>
-                          <td colSpan="8" className="mat-empty-td">
+                          <td colSpan="7" className="mat-empty-td">
                             <p>No user records found matching criteria.</p>
                           </td>
                         </tr>
                       ) : (
                         sortedAndFilteredUsers.map((user) => (
                           <tr key={user.id}>
-                            <td className="mat-td-id">#{user.id}</td>
-                            <td className="mat-td-user">
-                              <div className="mat-user-avatar">{user.fullName?.charAt(0).toUpperCase()}</div>
-                              <div className="mat-user-meta">
-                                <strong>{user.fullName}</strong>
-                                <span>{user.email}</span>
+                            <td>
+                              <div className="mat-user-cell">
+                                <div className="mat-user-avatar">{user.fullName?.charAt(0).toUpperCase()}</div>
+                                <div className="mat-user-meta">
+                                  <strong>{user.fullName}</strong>
+                                  <span>{user.email}</span>
+                                </div>
                               </div>
                             </td>
-                            <td className="mat-td-text">{user.phone || '—'}</td>
-                            <td className="mat-td-text">
-                              <strong>{user.organization || 'Individual'}</strong>
-                              <span>{user.industryType || 'N/A'}</span>
+                            <td>
+                              <div className="mat-text-cell">
+                                <strong style={{ fontWeight: 500 }}>{user.phone || '—'}</strong>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="mat-text-cell">
+                                <strong>{user.organization || 'Individual'}</strong>
+                                <span>{user.industryType || 'N/A'}</span>
+                              </div>
                             </td>
                             <td>
                               <div className="mat-doc-box">
@@ -697,24 +721,24 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* ===== VIEW USER DETAILS MODAL WITH BACKDROP BLUR ===== */}
+      {/* ===== VIEW USER DETAILS MODAL WITH DARK THEME ===== */}
       {viewUserModal && (
-        <div className="mat-modal-overlay" style={{ backdropFilter: 'blur(10px)', background: 'rgba(10, 15, 26, 0.75)', position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="mat-modal-card" style={{ width: '100%', maxWidth: '520px', background: '#ffffff', border: '1px solid #DFF5E1', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.2)', color: '#1e293b', maxHeight: '85vh', overflowY: 'auto' }}>
+        <div className="mat-modal-overlay" style={{ backdropFilter: 'blur(10px)', background: 'rgba(10, 15, 26, 0.85)', position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="mat-modal-card" style={{ width: '100%', maxWidth: '540px', background: '#1E293B', border: '1px solid #334155', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)', color: '#F8FAFC', maxHeight: '85vh', overflowY: 'auto' }}>
             {/* Modal Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderBottom: '1px solid #E8F5E9', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderBottom: '1px solid #334155', marginBottom: '1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                <div className="mat-user-avatar" style={{ width: '42px', height: '42px', fontSize: '1.125rem' }}>
+                <div className="mat-user-avatar" style={{ width: '42px', height: '42px', fontSize: '1.125rem', background: '#10B981', color: '#0F172A', fontWeight: 800 }}>
                   {viewUserModal.fullName?.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.125rem', color: '#1B5E20', fontWeight: 800 }}>{viewUserModal.fullName}</h3>
-                  <span style={{ fontSize: '0.8125rem', color: '#64748b' }}>{viewUserModal.email}</span>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', color: '#F8FAFC', fontWeight: 800 }}>{viewUserModal.fullName}</h3>
+                  <span style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>{viewUserModal.email}</span>
                 </div>
               </div>
               <button
                 onClick={() => setViewUserModal(null)}
-                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontSize: '1.125rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ background: 'rgba(255, 255, 255, 0.08)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontSize: '1.125rem', color: '#94A3B8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 ✕
               </button>
@@ -722,8 +746,8 @@ export default function AdminDashboard() {
 
             {/* Essential Details Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.875rem', marginBottom: '1.25rem' }}>
-              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Account Status</span>
+              <div className="mat-detail-box" style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Account Status</span>
                 <div style={{ marginTop: '0.2rem' }}>
                   <span className={`mat-status-pill status-${viewUserModal.accountStatus?.toLowerCase()}`}>
                     {viewUserModal.accountStatus}
@@ -731,40 +755,40 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Organization</span>
-                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>{viewUserModal.organization || 'Individual'}</div>
+              <div className="mat-detail-box" style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Organization</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#F8FAFC', fontSize: '0.875rem' }}>{viewUserModal.organization || 'Individual'}</div>
               </div>
 
-              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Industry</span>
-                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>{viewUserModal.industryType || 'N/A'}</div>
+              <div className="mat-detail-box" style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Industry</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#F8FAFC', fontSize: '0.875rem' }}>{viewUserModal.industryType || 'N/A'}</div>
               </div>
 
-              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Country & State</span>
-                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>
+              <div className="mat-detail-box" style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '0.75rem 0.875rem', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Country & State</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#F8FAFC', fontSize: '0.875rem' }}>
                   {viewUserModal.state ? `${viewUserModal.state}, ` : ''}{viewUserModal.country || 'India'}
                 </div>
               </div>
 
-              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px', gridColumn: 'span 2' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Full Address</span>
-                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>{viewUserModal.address || 'N/A'}</div>
+              <div className="mat-detail-box" style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '0.75rem 0.875rem', borderRadius: '12px', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Full Address</span>
+                <div style={{ marginTop: '0.2rem', fontWeight: 600, color: '#F8FAFC', fontSize: '0.875rem' }}>{viewUserModal.address || 'N/A'}</div>
               </div>
 
-              <div className="mat-detail-box" style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', padding: '0.75rem 0.875rem', borderRadius: '12px', gridColumn: 'span 2' }}>
-                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Identity Proof Document</span>
+              <div className="mat-detail-box" style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', padding: '0.75rem 0.875rem', borderRadius: '12px', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Identity Proof Document</span>
                 <div style={{ marginTop: '0.375rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <strong style={{ color: '#2E7D32', fontSize: '0.875rem' }}>{viewUserModal.documentType || 'PAN / AADHAAR'}</strong>
-                    <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748b' }}>No: {viewUserModal.documentNumber || 'N/A'}</span>
+                    <strong style={{ color: '#34D399', fontSize: '0.875rem' }}>{viewUserModal.documentType || 'PAN / AADHAAR'}</strong>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: '#94A3B8' }}>No: {viewUserModal.documentNumber || 'N/A'}</span>
                   </div>
                   {viewUserModal.documentFileUrl ? (
                     <button
                       type="button"
                       className="mat-btn-doc-link"
-                      style={{ background: '#2E7D32', color: 'white', padding: '0.375rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                      style={{ background: '#10B981', color: '#0F172A', padding: '0.375rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
                       onClick={() => setViewDocumentModal({
                         url: viewUserModal.documentFileUrl,
                         userName: viewUserModal.fullName,
@@ -775,14 +799,14 @@ export default function AdminDashboard() {
                       📄 View Proof File
                     </button>
                   ) : (
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No file attached</span>
+                    <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>No file attached</span>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Modal Footer Actions */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.875rem', borderTop: '1px solid #E8F5E9' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.875rem', borderTop: '1px solid #334155' }}>
               <button className="mat-btn-secondary" onClick={() => setViewUserModal(null)} style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>
                 Close
               </button>
@@ -820,7 +844,7 @@ export default function AdminDashboard() {
             </div>
             <h3>Delete User Record</h3>
             <p>
-              Are you sure you want to permanently delete user record for <strong>{deleteConfirmUser.fullName}</strong> ({deleteConfirmUser.email})?
+              Are you sure you want to permanently delete user <strong>"{deleteConfirmUser.fullName}"</strong>?
               This action cannot be undone.
             </p>
             <div className="mat-modal-actions">
@@ -866,31 +890,31 @@ export default function AdminDashboard() {
 
       {/* ===== DOCUMENT PREVIEW POPUP MODAL ===== */}
       {viewDocumentModal && (
-        <div className="mat-modal-overlay" style={{ backdropFilter: 'blur(10px)', background: 'rgba(10, 15, 26, 0.8)', position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="mat-modal-card" style={{ width: '100%', maxWidth: '820px', background: '#ffffff', border: '1px solid #DFF5E1', borderRadius: '24px', padding: '1.5rem', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.35)', color: '#1e293b', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="mat-modal-overlay" style={{ backdropFilter: 'blur(10px)', background: 'rgba(10, 15, 26, 0.85)', position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="mat-modal-card" style={{ width: '100%', maxWidth: '820px', background: '#1E293B', border: '1px solid #334155', borderRadius: '24px', padding: '1.5rem', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.6)', color: '#F8FAFC', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderBottom: '1px solid #E8F5E9', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderBottom: '1px solid #334155', marginBottom: '1rem' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.125rem', color: '#1B5E20', fontWeight: 800 }}>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', color: '#F8FAFC', fontWeight: 800 }}>
                     {viewDocumentModal.docType} Identity Proof
                   </h3>
-                  <span className="mat-doc-badge" style={{ background: '#E8F5E9', color: '#2E7D32', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                  <span className="mat-doc-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
                     {viewDocumentModal.userName}
                   </span>
                 </div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Document No: {viewDocumentModal.docNumber}</span>
+                <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Document No: {viewDocumentModal.docNumber}</span>
               </div>
               <button
                 onClick={() => setViewDocumentModal(null)}
-                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontSize: '1.125rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ background: 'rgba(255, 255, 255, 0.08)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontSize: '1.125rem', color: '#94A3B8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 ✕
               </button>
             </div>
 
             {/* Document Viewer Frame */}
-            <div style={{ flex: 1, minHeight: '450px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <div style={{ flex: 1, minHeight: '450px', background: '#0F172A', borderRadius: '14px', border: '1px solid #334155', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
               {viewDocumentModal.url ? (
                 <iframe
                   src={viewDocumentModal.url}
@@ -898,19 +922,19 @@ export default function AdminDashboard() {
                   style={{ width: '100%', height: '100%', minHeight: '450px', border: 'none' }}
                 />
               ) : (
-                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem' }}>
+                <div style={{ color: '#94A3B8', textAlign: 'center', padding: '2rem' }}>
                   No document URL attached for this user.
                 </div>
               )}
             </div>
 
             {/* Footer Actions */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '1rem', marginTop: '1rem', borderTop: '1px solid #E8F5E9' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '1rem', marginTop: '1rem', borderTop: '1px solid #334155' }}>
               <a
                 href={viewDocumentModal.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontSize: '0.8125rem', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                style={{ fontSize: '0.8125rem', color: '#60A5FA', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
               >
                 ↗ Open in Full Window / Tab
               </a>
@@ -923,6 +947,46 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* FLOATING TOAST NOTIFICATION (TOP-RIGHT) */}
+      {(successMsg || error) && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '1.5rem',
+            right: '1.5rem',
+            backgroundColor: '#1E293B',
+            border: '1px solid #334155',
+            borderLeft: successMsg ? '4px solid #10B981' : '4px solid #EF4444',
+            color: '#F8FAFC',
+            padding: '0.85rem 1.25rem',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            zIndex: 9999,
+          }}
+        >
+          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+            {successMsg ? `✓ ${successMsg}` : `✕ ${error}`}
+          </span>
+          <button
+            onClick={() => { setSuccessMsg(''); setError(''); }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94A3B8',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              lineHeight: 1,
+              padding: '0 0 0 0.5rem',
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

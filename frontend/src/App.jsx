@@ -5,6 +5,7 @@ import BenefitsPage from './pages/BenefitsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import AdminDashboard from './pages/AdminDashboard';
+import UserDashboard from './pages/UserDashboard';
 import SetPasswordPage from './pages/SetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
@@ -23,6 +24,7 @@ import './index.css';
  *   /forgot-password → Forgot password request page
  *   /reset-password  → Reset password token landing page
  *   /admin           → Admin dashboard (requires ADMIN role)
+ *   /dashboard       → User activity logging & history dashboard
  */
 function App() {
   return (
@@ -38,6 +40,9 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ForgotPasswordPage />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/dashboard" element={<UserDashboard />} />
+        <Route path="/user-dashboard" element={<UserDashboard />} />
+        <Route path="/user" element={<UserDashboard />} />
       </Routes>
     </BrowserRouter>
   );
