@@ -7,16 +7,12 @@ import com.infosys.carbonfootprint.enums.AuthProvider;
 import com.infosys.carbonfootprint.enums.Role;
 import com.infosys.carbonfootprint.repository.UserRepository;
 import com.infosys.carbonfootprint.security.JwtTokenProvider;
-import com.infosys.carbonfootprint.util.DocumentValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Service handling user registration, login, and profile retrieval.
- */
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -31,22 +27,29 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
-    private final DocumentValidator documentValidator;
     private final CaptchaService captchaService;
     private final EmailService emailService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider jwtTokenProvider,
-                       DocumentValidator documentValidator,
                        CaptchaService captchaService,
                        EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
-        this.documentValidator = documentValidator;
         this.captchaService = captchaService;
         this.emailService = emailService;
+    }
+
+    private String generateTempPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        StringBuilder sb = new StringBuilder("Temp#");
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        for (int i = 0; i < 6; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
     }
 
     /**
@@ -71,28 +74,24 @@ public class AuthService {
             throw new IllegalArgumentException("An account with this email already exists");
         }
 
-        // 2. Check duplicate email
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("An account with this email already exists");
-        }
-
-        // 3. Encode optional password if user provided one
-        String encodedPassword = null;
-        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
-            encodedPassword = passwordEncoder.encode(request.getPassword().trim());
-        }
+        // 3. Generate initial temporary password placeholder for user
+        String tempPassword = generateTempPassword();
+        String encodedPassword = passwordEncoder.encode(tempPassword);
 
         // 4. Build user entity
         User user = User.builder()
                 .fullName(request.getFullName().trim())
                 .email(request.getEmail().trim().toLowerCase())
                 .password(encodedPassword)
+                .mustChangePassword(true)
                 .phone(request.getPhone().trim())
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender() != null ? request.getGender().trim() : null)
                 .designation(request.getDesignation() != null ? request.getDesignation().trim() : null)
                 .industryType(request.getIndustryType() != null ? request.getIndustryType().trim() : null)
                 .address(request.getAddress().trim())
+                .country(request.getCountry() != null ? request.getCountry().trim() : null)
+                .state(request.getState() != null ? request.getState().trim() : null)
                 .organization(request.getOrganization() != null ? request.getOrganization().trim() : null)
                 .documentFileUrl(request.getDocumentFileUrl())
                 .profilePictureUrl(request.getProfilePictureUrl())
@@ -109,8 +108,8 @@ public class AuthService {
         logger.info("New user registered: {} (status: PENDING)", user.getEmail());
 
         return ApiResponse.success(
-                "Registration successful! Your profile & documents have been submitted for admin approval. " +
-                "Once approved, you will receive an email with a link to set your password and access your account.");
+                "Registration successful! Your profile & document proof have been submitted for admin approval. " +
+                "Once approved by the administrator, an email with your Username and Temporary Password will be sent to " + user.getEmail() + ".");
     }
 
     /**
@@ -126,6 +125,7 @@ public class AuthService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
         user.setActivationToken(null);
         user.setActivationTokenExpiry(null);
         user.setAccountStatus(AccountStatus.APPROVED);
@@ -169,6 +169,7 @@ public class AuthService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
         user.setResetPasswordToken(null);
         user.setResetPasswordTokenExpiry(null);
 
@@ -214,7 +215,28 @@ public class AuthService {
         logger.info("User logged in: {}", user.getEmail());
 
         return new AuthResponse(token, user.getId(), user.getFullName(),
-                user.getEmail(), user.getRole().name());
+                user.getEmail(), user.getRole().name(),
+                Boolean.TRUE.equals(user.getMustChangePassword()));
+    }
+
+    /**
+     * Changes user's password and clears mustChangePassword flag.
+     */
+    @Transactional
+    public ApiResponse changePassword(String email, ChangePasswordRequest request) {
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("New password and confirm password do not match.");
+        }
+
+        User user = userRepository.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword().trim()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+
+        logger.info("Password changed successfully for user: {}", user.getEmail());
+        return ApiResponse.success("Password changed successfully!");
     }
 
     /**
@@ -234,6 +256,8 @@ public class AuthService {
                 .designation(user.getDesignation())
                 .industryType(user.getIndustryType())
                 .address(user.getAddress())
+                .country(user.getCountry())
+                .state(user.getState())
                 .organization(user.getOrganization())
                 .documentFileUrl(user.getDocumentFileUrl())
                 .profilePictureUrl(user.getProfilePictureUrl())

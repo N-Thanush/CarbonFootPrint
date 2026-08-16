@@ -79,12 +79,82 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles JSON deserialization and payload parsing errors (e.g. empty string for Long categoryId or bad date format).
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        logger.warn("JSON request parsing error: {}", ex.getMessage());
+        String msg = "Invalid request payload format or invalid field value. Please check inputs.";
+        if (ex.getCause() != null && ex.getCause().getMessage() != null) {
+            msg += " Details: " + ex.getCause().getMessage();
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(msg));
+    }
+
+    /**
+     * Handles controller method argument type mismatch errors (e.g. invalid URL parameter format).
+     */
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse> handleMethodArgumentTypeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        logger.warn("Method argument type mismatch: {}", ex.getMessage());
+        String msg = String.format("Invalid parameter value '%s' for '%s'", ex.getValue(), ex.getName());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(msg));
+    }
+
+    /**
+     * Handles database constraint violation errors (e.g. foreign key constraint, missing required field in database).
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex) {
+        logger.error("Data integrity violation: ", ex);
+        String detail = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Database constraint error: " + (detail != null ? detail : "Data integrity rule violated")));
+    }
+
+    /**
+     * Handles JPA constraint violations.
+     */
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse> handleConstraintViolation(jakarta.validation.ConstraintViolationException ex) {
+        logger.warn("Constraint violation: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Validation failed: " + ex.getMessage()));
+    }
+
+    /**
+     * Handles access denied / security authorization errors.
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        logger.warn("Access denied: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("Access denied: You do not have permission to perform this action."));
+    }
+
+    /**
+     * Handles HTTP method not supported errors.
+     */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        logger.warn("HTTP method not supported: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
      * Catches any unhandled exceptions.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse> handleGenericException(Exception ex) {
         logger.error("Unexpected error: ", ex);
+        String message = (ex.getMessage() != null && !ex.getMessage().trim().isEmpty())
+                ? ex.getMessage()
+                : "An unexpected error occurred. Please try again later.";
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("An unexpected error occurred. Please try again later."));
+                .body(ApiResponse.error(message));
     }
 }
+

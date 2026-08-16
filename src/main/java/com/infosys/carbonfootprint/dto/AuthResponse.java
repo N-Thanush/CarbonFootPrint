@@ -18,16 +18,22 @@ public class AuthResponse {
     private String fullName;
     private String email;
     private String role;
+    private boolean mustChangePassword;
 
     /**
      * Convenience constructor that defaults tokenType to "Bearer".
      */
     public AuthResponse(String token, Long userId, String fullName, String email, String role) {
+        this(token, userId, fullName, email, role, false);
+    }
+
+    public AuthResponse(String token, Long userId, String fullName, String email, String role, boolean mustChangePassword) {
         this.token = token;
         this.tokenType = "Bearer";
         this.userId = userId;
         this.fullName = fullName;
         this.email = email;
         this.role = role;
+        this.mustChangePassword = mustChangePassword;
     }
 }

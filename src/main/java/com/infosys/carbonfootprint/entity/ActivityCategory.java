@@ -23,15 +23,21 @@ public class ActivityCategory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(length = 20)
+    private String categoryCode;
+
     @Column(nullable = false, unique = true, length = 100)
     private String name;
 
-    @Column(length = 500)
+    @Column(nullable = false, length = 500)
     private String description;
 
     /** Icon name for frontend display (e.g., "car", "bolt", "utensils", "shopping-bag") */
     @Column(length = 50)
     private String iconName;
+
+    @Column(length = 20)
+    private String colorCode;
 
     /** Display order in the UI */
     @Column(nullable = false)
@@ -41,6 +47,15 @@ public class ActivityCategory {
     @Column(nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    @Column(length = 500)
+    private String remarks;
+
+    @Column(length = 100)
+    private String createdBy;
+
+    @Column(length = 100)
+    private String updatedBy;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -40,6 +40,11 @@ public class AdminCategoryController {
         return ResponseEntity.ok(categoryService.updateCategory(id, request));
     }
 
+    @PutMapping("/{id}/status")
+    public ResponseEntity<CategoryResponse> toggleStatus(@PathVariable Long id, @RequestParam(required = false) Boolean active) {
+        return ResponseEntity.ok(categoryService.toggleStatus(id, active));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteCategory(@PathVariable Long id) {
         return ResponseEntity.ok(categoryService.deleteCategory(id));

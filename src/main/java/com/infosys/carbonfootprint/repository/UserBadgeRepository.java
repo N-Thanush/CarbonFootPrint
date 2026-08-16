@@ -16,4 +16,6 @@ public interface UserBadgeRepository extends JpaRepository<UserBadge, Long> {
     Page<UserBadge> findByUserId(Long userId, Pageable pageable);
 
     boolean existsByUserIdAndBadgeId(Long userId, Long badgeId);
+
+    void deleteByUserId(Long userId);
 }

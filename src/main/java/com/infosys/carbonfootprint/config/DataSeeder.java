@@ -50,24 +50,34 @@ public class DataSeeder {
     }
 
     private void seedAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder) {
-        String adminEmail = "admin@carbonfootprint.com";
-        if (!userRepository.existsByEmail(adminEmail)) {
-            User admin = User.builder()
+        String adminEmail = "admin@gmail.com";
+        User admin = userRepository.findByEmail(adminEmail).orElse(null);
+        if (admin == null) {
+            admin = User.builder()
                     .fullName("System Administrator")
                     .email(adminEmail)
                     .password(passwordEncoder.encode("admin123"))
                     .phone("0000000000")
                     .dateOfBirth(LocalDate.of(2000, 1, 1))
-                    .address("System")
+                    .address("System Administrator HQ")
+                    .country("India")
+                    .state("Karnataka")
                     .documentType(DocumentType.PAN)
                     .documentNumber("ADMIN0000A")
                     .role(Role.ADMIN)
                     .accountStatus(AccountStatus.APPROVED)
                     .authProvider(AuthProvider.LOCAL)
+                    .mustChangePassword(false)
                     .build();
-
             userRepository.save(admin);
             logger.info("Seeded default admin: {}", adminEmail);
+        } else {
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setRole(Role.ADMIN);
+            admin.setAccountStatus(AccountStatus.APPROVED);
+            admin.setMustChangePassword(false);
+            userRepository.save(admin);
+            logger.info("Reset default admin credentials: {}", adminEmail);
         }
     }
 
