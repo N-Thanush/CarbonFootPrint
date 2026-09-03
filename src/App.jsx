@@ -9,22 +9,11 @@ import UserDashboard from './pages/UserDashboard';
 import SetPasswordPage from './pages/SetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import ChatbotWidget from './components/ChatbotWidget';
 import './index.css';
 
 /**
  * Main application component with routing.
- * Routes:
- *   /                → Landing page
- *   /services        → Services page
- *   /benefits        → Benefits page
- *   /login           → Login page
- *   /register        → Registration page (3-step wizard)
- *   /change-password → Change password page (with Success Popup)
- *   /set-password    → Account password activation page (via email link)
- *   /forgot-password → Forgot password request page
- *   /reset-password  → Reset password token landing page
- *   /admin           → Admin dashboard (requires ADMIN role)
- *   /dashboard       → User activity logging & history dashboard
  */
 function App() {
   return (
@@ -44,6 +33,7 @@ function App() {
         <Route path="/user-dashboard" element={<UserDashboard />} />
         <Route path="/user" element={<UserDashboard />} />
       </Routes>
+      <ChatbotWidget />
     </BrowserRouter>
   );
 }

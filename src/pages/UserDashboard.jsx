@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { userApi, authApi } from '../api';
+import { userApi, authApi, goalApi, analyticsApi, articleApi } from '../api';
+import AnalyticsCharts from '../components/AnalyticsCharts';
 import './UserDashboard.css';
 import {
   FaCar,
@@ -121,7 +122,8 @@ export default function UserDashboard() {
 
   // Sync active tab with URL search parameter ?tab=
   const tabParam = searchParams.get('tab');
-  const activeTab = tabParam === 'history' ? 'history' : 'log';
+  const VALID_TABS = ['log', 'analytics', 'goals', 'articles', 'history'];
+  const activeTab = VALID_TABS.includes(tabParam) ? tabParam : 'log';
 
   // Sync selected category with URL search parameter ?catId=
   const categoryIdParam = searchParams.get('catId');
@@ -168,6 +170,42 @@ export default function UserDashboard() {
   const [editModalLog, setEditModalLog] = useState(null);
   const [deleteConfirmLog, setDeleteConfirmLog] = useState(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // Milestone 3 States
+  const [topActivities, setTopActivities] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [articles, setArticles] = useState([]);
+  const [selectedArticle, setSelectedArticle] = useState(null);
+  const [dismissAlert, setDismissAlert] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalForm, setGoalForm] = useState({
+    title: '',
+    categoryId: '',
+    targetLimitKgCo2: 100,
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
+  });
+
+  const [editingGoal, setEditingGoal] = useState(null);
+  const [editGoalForm, setEditGoalForm] = useState({
+    title: '',
+    categoryId: '',
+    targetLimitKgCo2: 100,
+    startDate: '',
+    endDate: '',
+  });
+
+  const handleOpenEditGoal = (goal) => {
+    setEditingGoal(goal);
+    setEditGoalForm({
+      title: goal.title || '',
+      categoryId: goal.categoryId ? String(goal.categoryId) : '',
+      targetLimitKgCo2: goal.targetLimitKgCo2 || 100,
+      startDate: goal.startDate || '',
+      endDate: goal.endDate || '',
+    });
+  };
 
   useEffect(() => {
     if (success) {
@@ -245,11 +283,207 @@ export default function UserDashboard() {
     }
   }, [categoryIdParam, categories, fetchActivityTypes]);
 
-  // Summary Stats estimation
+  // Summary Stats & All Logs for Charts
+  const [allUserLogs, setAllUserLogs] = useState([]);
   const [userStats, setUserStats] = useState({
     totalEmission: 0,
     totalCount: 0,
   });
+
+  const fetchSummaryStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      const allRes = await userApi.getActivityHistory(token, { page: 0, size: 1000 });
+      const logs = allRes.content || [];
+      setAllUserLogs(logs);
+      const sum = logs.reduce((acc, item) => acc + (item.totalEmission || item.kgCo2e || 0), 0);
+      setUserStats({
+        totalEmission: sum,
+        totalCount: allRes.totalElements || logs.length,
+      });
+    } catch {
+      // ignore
+    }
+  }, [token]);
+
+  // Current month dynamic calculations for Ribbon & Budget Widget
+  const currentMonthLogs = useMemo(() => {
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+    return allUserLogs.filter((log) => {
+      const dStr = log.activityDateIso || log.activityDate;
+      if (!dStr) return false;
+      let d = new Date(dStr);
+      if (isNaN(d.getTime()) && typeof dStr === 'string') {
+        const p = dStr.split('-');
+        if (p.length === 3 && p[2].length >= 4) {
+          d = new Date(`${p[2]}-${p[1]}-${p[0]}`);
+        }
+      }
+      return !isNaN(d.getTime()) && d.getMonth() === curMonth && d.getFullYear() === curYear;
+    });
+  }, [allUserLogs]);
+
+  const currentMonthEmissions = useMemo(() => {
+    const sum = currentMonthLogs.reduce((acc, l) => acc + Number(l.totalEmission || l.kgCo2e || 0), 0);
+    return Math.round(sum * 10) / 10;
+  }, [currentMonthLogs]);
+
+  const activeGoal = useMemo(() => {
+    if (!goals || goals.length === 0) return null;
+    return (
+      goals.find((g) => g.status === 'ACTIVE' && (!g.categoryId || g.categoryCode === 'ALL')) ||
+      goals.find((g) => g.status === 'ACTIVE') ||
+      goals[0]
+    );
+  }, [goals]);
+
+  // Unified numbers matching GoalService backend logic
+  const targetLimit = activeGoal && activeGoal.targetLimitKgCo2 != null
+    ? Number(activeGoal.targetLimitKgCo2)
+    : 5.0;
+
+  const currentEmission = activeGoal && activeGoal.currentEmissionKgCo2 != null
+    ? Math.round(Number(activeGoal.currentEmissionKgCo2) * 10) / 10
+    : currentMonthEmissions;
+
+  const budgetPct = activeGoal && activeGoal.progressPercentage != null
+    ? Math.round(Number(activeGoal.progressPercentage))
+    : (targetLimit > 0 ? Math.round((currentEmission / targetLimit) * 100) : 0);
+
+  const remainingBudget = Math.max(0, Math.round((targetLimit - currentEmission) * 10) / 10);
+
+  const isExceeded = activeGoal?.status === 'EXCEEDED' || currentEmission > targetLimit || budgetPct > 100;
+  const isWarning = !isExceeded && (budgetPct >= 90 || activeGoal?.statusMessage?.includes('Warning'));
+  const goalStatusLabel = isExceeded ? 'Exceeded' : isWarning ? 'Warning' : 'On Track';
+  const goalStatusColor = isExceeded ? '#F87171' : isWarning ? '#FBBF24' : '#34D399';
+  const goalStatusBg = isExceeded ? 'rgba(239, 68, 68, 0.15)' : isWarning ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+  const goalIconGradient = isExceeded
+    ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)'
+    : isWarning
+    ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
+    : 'linear-gradient(135deg, #10B981 0%, #059669 100%)';
+
+  // Dynamic Eco Achievement & Milestone System (Database-Driven)
+  const userTransportCount = useMemo(() => {
+    return allUserLogs.filter((l) => (l.categoryName || '').toLowerCase().includes('transport')).length;
+  }, [allUserLogs]);
+
+  const userEnergyCount = useMemo(() => {
+    return allUserLogs.filter(
+      (l) => (l.categoryName || '').toLowerCase().includes('electr') || (l.categoryName || '').toLowerCase().includes('energy')
+    ).length;
+  }, [allUserLogs]);
+
+  const badgesList = useMemo(() => {
+    const totalCount = allUserLogs.length;
+    const isTargetMaintained = budgetPct > 0 && budgetPct <= 100 && currentMonthLogs.length > 0;
+
+    return [
+      {
+        id: 'first_step',
+        icon: '🌱',
+        name: 'First Steps',
+        desc: 'Log your first carbon activity',
+        unlocked: totalCount >= 1,
+        current: Math.min(totalCount, 1),
+        target: 1,
+        unit: 'log',
+        accentColor: '#10B981',
+      },
+      {
+        id: 'target_keeper',
+        icon: '🎯',
+        name: 'Target Keeper',
+        desc: 'Keep emissions below monthly budget',
+        unlocked: isTargetMaintained,
+        current: isTargetMaintained ? 1 : 0,
+        target: 1,
+        unit: isTargetMaintained ? 'Active' : 'Over Budget',
+        accentColor: '#3B82F6',
+      },
+      {
+        id: 'green_traveler',
+        icon: '🚴',
+        name: 'Green Traveler',
+        desc: 'Log 5 transit / commute activities',
+        unlocked: userTransportCount >= 5,
+        current: Math.min(userTransportCount, 5),
+        target: 5,
+        unit: 'trips',
+        accentColor: '#F59E0B',
+      },
+      {
+        id: 'energy_guardian',
+        icon: '⚡',
+        name: 'Energy Guardian',
+        desc: 'Log 5 home energy / electricity entries',
+        unlocked: userEnergyCount >= 5,
+        current: Math.min(userEnergyCount, 5),
+        target: 5,
+        unit: 'entries',
+        accentColor: '#8B5CF6',
+      },
+      {
+        id: 'eco_warrior',
+        icon: '🛡️',
+        name: 'Eco Warrior',
+        desc: 'Log 15+ carbon footprint activities',
+        unlocked: totalCount >= 15,
+        current: Math.min(totalCount, 15),
+        target: 15,
+        unit: 'logs',
+        accentColor: '#EC4899',
+      },
+      {
+        id: 'carbon_champion',
+        icon: '🏆',
+        name: 'Climate Champion',
+        desc: 'Log 30+ activities across all sectors',
+        unlocked: totalCount >= 30,
+        current: Math.min(totalCount, 30),
+        target: 30,
+        unit: 'logs',
+        accentColor: '#06B6D4',
+      },
+    ];
+  }, [allUserLogs, budgetPct, currentMonthLogs, userTransportCount, userEnergyCount]);
+
+  const unlockedCount = useMemo(() => badgesList.filter((b) => b.unlocked).length, [badgesList]);
+
+  const userLevel = useMemo(() => {
+    if (unlockedCount >= 6) return { title: 'Carbon Neutral Champion 🏆', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.15)' };
+    if (unlockedCount >= 4) return { title: 'Sustainability Advocate 🌍', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.15)' };
+    if (unlockedCount >= 2) return { title: 'Climate Conscious 🌿', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
+    return { title: 'Eco Starter 🌱', color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.15)' };
+  }, [unlockedCount]);
+
+  // CSV Exporter for History logs
+  const handleExportCsv = () => {
+    if (!allUserLogs || allUserLogs.length === 0) return;
+    const headers = ['ID', 'Date', 'Category', 'Activity Type', 'Quantity', 'Unit', 'Factor (kg CO2e/unit)', 'Total Emission (kg CO2e)', 'Notes'];
+    const rows = allUserLogs.map((l) => [
+      l.id,
+      l.activityDateIso || l.activityDate || '',
+      `"${(l.categoryName || '').replace(/"/g, '""')}"`,
+      `"${(l.activityTypeName || '').replace(/"/g, '""')}"`,
+      l.quantity || 0,
+      `"${l.unit || ''}"`,
+      l.emissionFactor || 0,
+      l.totalEmission || 0,
+      `"${(l.notes || '').replace(/"/g, '""')}"`,
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `carbon_footprint_history_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Fetch Activity History
   const fetchHistory = useCallback(async () => {
@@ -257,37 +491,80 @@ export default function UserDashboard() {
     setLoading(true);
     setError('');
     try {
+      const targetCatId = historyCategoryFilter || categoryIdParam || undefined;
       const res = await userApi.getActivityHistory(token, {
         date: historyDateFilter || undefined,
-        categoryId: historyCategoryFilter || undefined,
+        categoryId: targetCatId,
         page: currentPage,
         size: pageSize,
       });
       setHistoryLogs(res.content || []);
       setTotalPages(res.totalPages || 0);
       setTotalElements(res.totalElements || 0);
-
-      // Always fetch overall summary totals across all user activities
-      userApi.getActivityHistory(token, { page: 0, size: 100 }).then((allRes) => {
-        const logs = allRes.content || [];
-        const sum = logs.reduce((acc, item) => acc + (item.totalEmission || 0), 0);
-        setUserStats({
-          totalEmission: sum,
-          totalCount: allRes.totalElements || logs.length,
-        });
-      }).catch(() => {});
     } catch (err) {
       console.error(err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [token, historyDateFilter, historyCategoryFilter, currentPage, pageSize]);
+  }, [token, historyDateFilter, historyCategoryFilter, categoryIdParam, currentPage, pageSize]);
 
+  // Milestone 3 Fetchers
+  const fetchAnalytics = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [topRes, alertRes] = await Promise.all([
+        analyticsApi.getTopActivities(token),
+        analyticsApi.getAlerts(token)
+      ]);
+      setTopActivities(topRes || []);
+      setAlerts(alertRes || []);
+    } catch (err) {
+      console.error('Error fetching analytics:', err);
+    }
+  }, [token]);
+
+  const fetchGoals = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await goalApi.getUserGoals(token);
+      setGoals(res || []);
+    } catch (err) {
+      console.error('Error fetching goals:', err);
+    }
+  }, [token]);
+
+  const fetchArticles = useCallback(async () => {
+    try {
+      let targetCategoryFilter = undefined;
+      if (categoryIdParam && categories.length > 0) {
+        const matched = categories.find((c) => String(c.id) === String(categoryIdParam));
+        if (matched) targetCategoryFilter = matched.name;
+      }
+      const res = await articleApi.getPublishedArticles(targetCategoryFilter);
+      setArticles(res.content || []);
+    } catch (err) {
+      console.error('Error fetching articles:', err);
+    }
+  }, [categoryIdParam, categories]);
+
+  // Initial mount load
   useEffect(() => {
     fetchCategories();
-    fetchHistory();
-  }, [fetchCategories, fetchHistory]);
+    fetchSummaryStats();
+    fetchGoals();
+  }, [fetchCategories, fetchSummaryStats, fetchGoals]);
+
+  // Tab & Filter load: synchronize stats, logs, and goals on every tab navigation
+  useEffect(() => {
+    fetchSummaryStats();
+    fetchGoals();
+    if (activeTab === 'analytics') {
+      fetchAnalytics();
+    }
+    if (activeTab === 'articles') fetchArticles();
+    if (activeTab === 'history') fetchHistory();
+  }, [activeTab, fetchAnalytics, fetchGoals, fetchArticles, fetchHistory, fetchSummaryStats]);
 
   // Handle Category Card Click
   const handleSelectCategory = (cat) => {
@@ -519,8 +796,254 @@ export default function UserDashboard() {
             </div>
           </div>
 
+          {/* CRITICAL TARGET EXCEEDED ALERT BANNER */}
+          {!dismissAlert &&
+            (goals.some((g) => g.status === 'EXCEEDED' || (g.progressPercentage && g.progressPercentage >= 100)) ||
+              alerts.some((a) => a.alertLevel === 'CRITICAL')) && (
+              <div
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.3) 100%)',
+                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  borderRadius: '16px',
+                  padding: '1.25rem 1.5rem',
+                  margin: '1.25rem 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justify: 'space-between',
+                  gap: '1.25rem',
+                  boxShadow: '0 10px 25px rgba(239, 68, 68, 0.2)',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: '1 1 300px' }}>
+                  <span style={{ fontSize: '2.2rem', flexShrink: 0 }}>🚨</span>
+                  <div>
+                    <h4 style={{ margin: 0, color: '#F87171', fontSize: '1.15rem', fontWeight: 800 }}>
+                      CRITICAL CARBON TARGET EXCEEDED!
+                    </h4>
+                    <p style={{ margin: '0.25rem 0 0 0', color: '#FEE2E2', fontSize: '0.875rem', lineHeight: '1.4' }}>
+                      One or more of your monthly carbon emission limits have been exceeded. Review your target limits and consider taking eco-friendly actions like public transport or energy reduction.
+                    </p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                  <button
+                    className="btn-submit"
+                    onClick={() => handleTabChange('goals')}
+                    style={{
+                      background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                      color: '#FFF',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      padding: '0.65rem 1.25rem',
+                      borderRadius: '10px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Manage Goals & Targets
+                  </button>
+                  <button
+                    onClick={() => setDismissAlert(true)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      border: 'none',
+                      color: '#F87171',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      fontSize: '1.1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Dismiss Alert"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+
+        {/* Top Carbon Metric Ribbon */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '1.25rem',
+            marginBottom: '1.75rem',
+          }}
+        >
+          {/* Card 1: Month Footprint */}
+          <div
+            style={{
+              background: '#1E293B',
+              borderRadius: '16px',
+              padding: '1.25rem 1.5rem',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1.25rem',
+            }}
+          >
+            <div
+              style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFF',
+                fontSize: '1.4rem',
+                flexShrink: 0,
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+              }}
+            >
+              🌿
+            </div>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: '0.76rem', color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                This Month's Emissions
+              </span>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#F8FAFC', lineHeight: 1.2, marginTop: '2px' }}>
+                {currentMonthEmissions} <small style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94A3B8' }}>kg CO₂e</small>
+              </div>
+              <span style={{ fontSize: '0.74rem', color: '#10B981', fontWeight: 600 }}>
+                ● {currentMonthLogs.length} active logs recorded
+              </span>
+            </div>
+          </div>
+
+          {/* Card 2: Active Monthly Target */}
+          <div
+            style={{
+              background: '#1E293B',
+              borderRadius: '16px',
+              padding: '1.25rem 1.5rem',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1.25rem',
+              cursor: 'pointer',
+            }}
+            onClick={() => handleTabChange('goals')}
+            title="Click to view and adjust monthly goals"
+          >
+            <div
+              style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '14px',
+                background: goalIconGradient,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFF',
+                fontSize: '1.4rem',
+                flexShrink: 0,
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.3)',
+              }}
+            >
+              🎯
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.76rem', color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Target Limit ({targetLimit} kg)
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    padding: '2px 7px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    background: goalStatusBg,
+                    color: goalStatusColor,
+                  }}
+                >
+                  {goalStatusLabel}
+                </span>
+              </div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#F8FAFC', lineHeight: 1.2, marginTop: '2px' }}>
+                {budgetPct}% <small style={{ fontSize: '0.8rem', fontWeight: 500, color: '#94A3B8' }}>consumed</small>
+              </div>
+              {/* Mini Progress Bar */}
+              <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', marginTop: '6px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${Math.min(100, budgetPct)}%`,
+                    height: '100%',
+                    background: isExceeded ? '#EF4444' : isWarning ? '#F59E0B' : '#10B981',
+                    borderRadius: '3px',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Remaining Allowance */}
+          <div
+            style={{
+              background: '#1E293B',
+              borderRadius: '16px',
+              padding: '1.25rem 1.5rem',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1.25rem',
+            }}
+          >
+            <div
+              style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFF',
+                fontSize: '1.4rem',
+                flexShrink: 0,
+                boxShadow: '0 4px 14px rgba(139, 92, 246, 0.35)',
+              }}
+            >
+              ⚡
+            </div>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: '0.76rem', color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Remaining Allowance
+              </span>
+              <div
+                style={{
+                  fontSize: '1.55rem',
+                  fontWeight: 800,
+                  color: budgetPct > 100 ? '#F87171' : '#F8FAFC',
+                  lineHeight: 1.2,
+                  marginTop: '2px',
+                }}
+              >
+                {budgetPct > 100 ? `+${(currentMonthEmissions - targetLimit).toFixed(1)} kg over` : `${remainingBudget} kg CO₂e`}
+              </div>
+              <span style={{ fontSize: '0.74rem', color: '#CBD5E1' }}>
+                {budgetPct > 100 ? 'Switch to eco transit to rebalance' : 'Available for remaining days'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Tab Navigation */}
-        <div className="portal-tab-bar">
+        <div className="portal-tab-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           <button
             className={`portal-tab-btn ${activeTab === 'log' ? 'active' : ''}`}
             onClick={() => handleTabChange('log')}
@@ -528,10 +1051,28 @@ export default function UserDashboard() {
             <FaCalculator /> Log Daily Activity
           </button>
           <button
+            className={`portal-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => handleTabChange('analytics')}
+          >
+            <FaChartLine /> Top 5 Emissions & Alerts
+          </button>
+          <button
+            className={`portal-tab-btn ${activeTab === 'goals' ? 'active' : ''}`}
+            onClick={() => handleTabChange('goals')}
+          >
+            <FaSeedling /> Carbon Goals & Targets
+          </button>
+          <button
+            className={`portal-tab-btn ${activeTab === 'articles' ? 'active' : ''}`}
+            onClick={() => handleTabChange('articles')}
+          >
+            <FaBoxes /> Sustainability Articles Hub
+          </button>
+          <button
             className={`portal-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
             onClick={() => handleTabChange('history')}
           >
-            <FaHistory /> Activity History & Analytics
+            <FaHistory /> Activity History
           </button>
         </div>
 
@@ -859,7 +1400,29 @@ export default function UserDashboard() {
                 </div>
               </div>
 
-              <div className="toolbar-right">
+              <div className="toolbar-right" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  style={{
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    color: '#FFF',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.4rem 0.85rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  }}
+                  title="Export all activities to CSV report"
+                >
+                  📥 Export CSV
+                </button>
+
                 <div className="admin-page-size" style={{ margin: 0 }}>
                   <label htmlFor="history-page-size" style={{ fontSize: '0.8rem', color: '#94A3B8' }}>
                     Show
@@ -990,8 +1553,659 @@ export default function UserDashboard() {
             </div>
           </div>
         )}
+
+        {/* TAB: TOP 5 EMISSIONS & ALERTS (RECOMMENDATIONS & ALERTS MODULE) */}
+        {activeTab === 'analytics' && (
+          <div className="portal-log-container">
+            <div className="admin-sub-header">
+              <div>
+                <h2 className="sub-title">Top Emissions & Smart Recommendations</h2>
+                <p className="sub-desc">Analyze your top carbon activity drivers and view threshold recommendations</p>
+              </div>
+            </div>
+
+            {/* Visual Interactive Dashboard Charts */}
+            <AnalyticsCharts topActivities={topActivities} historyLogs={allUserLogs.length > 0 ? allUserLogs : historyLogs} goals={goals} />
+
+            {/* Smart Eco Alerts */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+              {alerts.map((alert, aIdx) => {
+                const isCritical = alert.alertLevel === 'CRITICAL';
+                const isWarning = alert.alertLevel === 'WARNING';
+                return (
+                  <div
+                    key={aIdx}
+                    style={{
+                      padding: '1.25rem 1.5rem',
+                      borderRadius: '16px',
+                      background: isCritical
+                        ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(185, 28, 28, 0.25) 100%)'
+                        : isWarning
+                        ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%)'
+                        : 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.25) 100%)',
+                      border: `1px solid ${isCritical ? 'rgba(239, 68, 68, 0.4)' : isWarning ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '1rem',
+                    }}
+                  >
+                    <span style={{ fontSize: '2rem' }}>{isCritical ? '🚨' : isWarning ? '⚠️' : '🌱'}</span>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: 0, fontSize: '1.1rem', color: isCritical ? '#F87171' : isWarning ? '#FBBF24' : '#34D399' }}>
+                        {alert.title}
+                      </h4>
+                      <p style={{ margin: '0.3rem 0', color: '#E2E8F0', fontSize: '0.9rem' }}>{alert.message}</p>
+                      <div style={{ fontSize: '0.85rem', color: '#94A3B8', fontWeight: 600, marginTop: '0.4rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 0.85rem', borderRadius: '8px' }}>
+                        💡 <strong>Recommendation:</strong> {alert.recommendation}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Top 5 Emissions Cards */}
+            <h3 style={{ fontSize: '1.2rem', color: '#FFF', marginBottom: '1rem' }}>🔥 Top 5 Highest Carbon Contributors</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.25rem' }}>
+              {topActivities.length === 0 ? (
+                <div style={{ color: '#94A3B8', padding: '1rem' }}>No activity data available to compute top emissions yet.</div>
+              ) : (
+                topActivities.map((act, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '1.5rem',
+                      borderRadius: '16px',
+                      background: '#1E293B',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="doc-badge" style={{ backgroundColor: act.colorCode || '#10B981', color: '#fff' }}>
+                        Rank {idx + 1} • {act.categoryName}
+                      </span>
+                      <strong style={{ fontSize: '1.1rem', color: '#34D399' }}>{act.percentageShare}%</strong>
+                    </div>
+                    <h4 style={{ margin: '0.5rem 0 0 0', color: '#FFF', fontSize: '1.1rem' }}>{act.activityTypeName}</h4>
+                    <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#F1F5F9' }}>
+                      {act.totalEmissionKgCo2} <span style={{ fontSize: '0.85rem', color: '#94A3B8' }}>kg CO₂e</span>
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Eco Achievements & Milestones */}
+            <div style={{ marginTop: '2.5rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '1rem',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <h3 style={{ fontSize: '1.25rem', color: '#FFF', margin: 0, fontWeight: 800 }}>
+                      🏆 Eco Achievements &amp; Milestones
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        color: '#94A3B8',
+                        background: '#0F172A',
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {unlockedCount} of {badgesList.length} Earned
+                    </span>
+                  </div>
+                  <p style={{ margin: '0.25rem 0 0 0', color: '#94A3B8', fontSize: '0.8rem' }}>
+                    Real-time sustainability milestones calculated strictly from your logged activities and carbon budget
+                  </p>
+                </div>
+
+                {/* Dynamic User Level Badge */}
+                <span
+                  style={{
+                    fontSize: '0.75rem',
+                    color: userLevel.color,
+                    background: userLevel.bg,
+                    padding: '0.35rem 0.85rem',
+                    borderRadius: '10px',
+                    fontWeight: 700,
+                    border: `1px solid ${userLevel.color}40`,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                  }}
+                >
+                  Rank Level: {userLevel.title}
+                </span>
+              </div>
+
+              {/* Milestone Overall Progress Bar */}
+              <div
+                style={{
+                  background: '#0F172A',
+                  borderRadius: '12px',
+                  padding: '0.75rem 1rem',
+                  marginBottom: '1.25rem',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 600 }}>
+                  Achievement Journey Progress:
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: '150px',
+                    height: '8px',
+                    background: 'rgba(255,255,255,0.08)',
+                    borderRadius: '4px',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.round((unlockedCount / badgesList.length) * 100)}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #10B981 0%, #3B82F6 100%)',
+                      borderRadius: '4px',
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#34D399', fontWeight: 800 }}>
+                  {Math.round((unlockedCount / badgesList.length) * 100)}% Complete
+                </div>
+              </div>
+
+              {/* Badges Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.1rem' }}>
+                {badgesList.map((badge) => {
+                  const pct = Math.min(100, Math.round((badge.current / badge.target) * 100));
+                  return (
+                    <div
+                      key={badge.id}
+                      style={{
+                        background: badge.unlocked ? '#1E293B' : 'rgba(30, 41, 59, 0.45)',
+                        border: badge.unlocked
+                          ? `1px solid ${badge.accentColor}50`
+                          : '1px solid rgba(255, 255, 255, 0.06)',
+                        borderRadius: '18px',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        boxShadow: badge.unlocked ? `0 8px 24px rgba(0, 0, 0, 0.25)` : 'none',
+                        transition: 'transform 0.2s ease, border-color 0.2s ease',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <span
+                            style={{
+                              fontSize: '1.75rem',
+                              filter: badge.unlocked ? 'none' : 'grayscale(0.8)',
+                              opacity: badge.unlocked ? 1 : 0.6,
+                            }}
+                          >
+                            {badge.icon}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '6px',
+                              background: badge.unlocked ? `${badge.accentColor}20` : 'rgba(255, 255, 255, 0.06)',
+                              color: badge.unlocked ? badge.accentColor : '#64748B',
+                              border: badge.unlocked ? `1px solid ${badge.accentColor}40` : '1px solid rgba(255, 255, 255, 0.08)',
+                            }}
+                          >
+                            {badge.unlocked ? '✓ Unlocked' : `🔒 In Progress`}
+                          </span>
+                        </div>
+
+                        <h4 style={{ margin: '0 0 0.3rem 0', color: badge.unlocked ? '#FFF' : '#CBD5E1', fontSize: '1rem', fontWeight: 700 }}>
+                          {badge.name}
+                        </h4>
+                        <p style={{ margin: '0 0 0.75rem 0', color: '#94A3B8', fontSize: '0.76rem', lineHeight: 1.35 }}>
+                          {badge.desc}
+                        </p>
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>
+                            {badge.unlocked
+                              ? 'Goal Achieved'
+                              : `${badge.current} / ${badge.target} ${badge.unit}`}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: badge.unlocked ? badge.accentColor : '#94A3B8', fontWeight: 700 }}>
+                            {pct}%
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            width: '100%',
+                            height: '6px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            borderRadius: '3px',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              background: badge.unlocked ? badge.accentColor : '#64748B',
+                              borderRadius: '3px',
+                              transition: 'width 0.4s ease',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: GOALS & TARGETS (GOALS MODULE) */}
+        {activeTab === 'goals' && (
+          <div className="portal-log-container">
+            <div className="admin-sub-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 className="sub-title">Monthly Carbon Targets & Goals</h2>
+                <p className="sub-desc">Set emission limits and monitor real-time target progress</p>
+              </div>
+              <button
+                className="btn-submit"
+                onClick={() => setShowGoalModal(true)}
+                style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
+              >
+                + Set New Monthly Goal
+              </button>
+            </div>
+
+            {/* Goals Cards List */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
+              {goals.length === 0 ? (
+                <div style={{ color: '#94A3B8', padding: '2rem', background: '#1E293B', borderRadius: '16px', gridColumn: '1/-1' }}>
+                  No active goals set yet. Click <strong>"+ Set New Monthly Goal"</strong> to create your first carbon target!
+                </div>
+              ) : (
+                goals.map((g) => {
+                  const pct = Math.min(g.progressPercentage || 0, 100);
+                  const isExceeded = g.status === 'EXCEEDED' || (g.progressPercentage > 100);
+                  const isWarn = g.progressPercentage >= 80 && !isExceeded;
+                  const barColor = isExceeded ? '#EF4444' : isWarn ? '#F59E0B' : '#10B981';
+
+                  return (
+                    <div
+                      key={g.id}
+                      style={{
+                        padding: '1.5rem',
+                        borderRadius: '16px',
+                        background: '#1E293B',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.75rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <h4 style={{ margin: 0, color: '#FFF', fontSize: '1.15rem' }}>{g.title}</h4>
+                          <span style={{ fontSize: '0.8rem', color: '#94A3B8' }}>{g.categoryName}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button
+                            onClick={() => handleOpenEditGoal(g)}
+                            style={{ border: 'none', background: 'transparent', color: '#60A5FA', cursor: 'pointer', fontSize: '1rem' }}
+                            title="Edit Goal"
+                          >
+                            <FaEdit />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm('Delete this carbon target?')) {
+                                goalApi.deleteGoal(token, g.id).then(() => {
+                                  setSuccess('Goal removed');
+                                  fetchGoals();
+                                });
+                              }
+                            }}
+                            style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', fontSize: '1rem' }}
+                            title="Delete Goal"
+                          >
+                            <FaTrash />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '0.5rem' }}>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 800, color: barColor }}>
+                          {g.currentEmissionKgCo2} <span style={{ fontSize: '0.85rem', color: '#94A3B8' }}>/ {g.targetLimitKgCo2} kg</span>
+                        </span>
+                        <span style={{ fontWeight: 700, color: barColor }}>{g.progressPercentage}%</span>
+                      </div>
+
+                      {/* Visual Progress Bar */}
+                      <div style={{ width: '100%', height: '10px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '5px', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor, transition: 'width 0.4s ease' }} />
+                      </div>
+
+                      <div style={{ fontSize: '0.8rem', color: isExceeded ? '#F87171' : '#94A3B8', fontWeight: 600 }}>
+                        {g.statusMessage || 'Target active'}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB: SUSTAINABILITY ARTICLES HUB */}
+        {activeTab === 'articles' && (
+          <div className="portal-log-container">
+            <div className="admin-sub-header">
+              <div>
+                <h2 className="sub-title">Sustainability & Environment Articles Hub</h2>
+                <p className="sub-desc">Read climate insights, eco tips, and green living advice</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
+              {articles.length === 0 ? (
+                <div style={{ color: '#94A3B8', padding: '2rem', background: '#1E293B', borderRadius: '16px', gridColumn: '1/-1' }}>
+                  No published articles available at the moment. Check back soon!
+                </div>
+              ) : (
+                articles.map((art) => (
+                  <div
+                    key={art.id}
+                    onClick={() => setSelectedArticle(art)}
+                    style={{
+                      padding: '1.5rem',
+                      borderRadius: '16px',
+                      background: '#1E293B',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem'
+                    }}
+                  >
+                    <span className="doc-badge" style={{ backgroundColor: '#10B981', color: '#fff', alignSelf: 'flex-start' }}>
+                      {art.category || 'Sustainability'}
+                    </span>
+                    <h4 style={{ margin: 0, color: '#FFF', fontSize: '1.2rem', lineHeight: '1.3' }}>{art.title}</h4>
+                    <p style={{ margin: 0, color: '#94A3B8', fontSize: '0.875rem', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {art.summary}
+                    </p>
+                    <div style={{ fontSize: '0.78rem', color: '#34D399', marginTop: 'auto', fontWeight: 600 }}>
+                      Read Full Article →
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
+
+      {/* ARTICLE READER MODAL */}
+      {selectedArticle && (
+        <div className="modal-overlay" onClick={() => setSelectedArticle(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '650px', maxHeight: '85vh', overflowY: 'auto' }}>
+            <span className="doc-badge" style={{ backgroundColor: '#10B981', color: '#fff', marginBottom: '0.5rem', display: 'inline-block' }}>
+              {selectedArticle.category}
+            </span>
+            <h2 className="modal-title" style={{ fontSize: '1.5rem', margin: '0.5rem 0' }}>{selectedArticle.title}</h2>
+            <div style={{ fontSize: '0.8rem', color: '#94A3B8', marginBottom: '1rem' }}>
+              By {selectedArticle.author || 'Admin Team'} • {selectedArticle.createdAt ? selectedArticle.createdAt.split(' ')[0] : ''}
+            </div>
+
+            <div style={{ color: '#E2E8F0', fontSize: '0.95rem', lineHeight: '1.7', whiteSpace: 'pre-line', margin: '1rem 0' }}>
+              {selectedArticle.content}
+            </div>
+
+            <button className="btn-google" onClick={() => setSelectedArticle(null)} style={{ marginTop: '1rem', width: '100%' }}>
+              Close Article
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE GOAL MODAL */}
+      {showGoalModal && (
+        <div className="modal-overlay" onClick={() => setShowGoalModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Set Monthly Carbon Goal</h3>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const payload = {
+                    title: goalForm.title || undefined,
+                    categoryId: goalForm.categoryId ? Number(goalForm.categoryId) : undefined,
+                    targetLimitKgCo2: Number(goalForm.targetLimitKgCo2),
+                    startDate: goalForm.startDate,
+                    endDate: goalForm.endDate,
+                  };
+                  await goalApi.createGoal(token, payload);
+                  setSuccess('Goal set successfully!');
+                  setShowGoalModal(false);
+                  fetchGoals();
+                  fetchAnalytics();
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+              className="auth-form"
+              style={{ marginTop: '1rem' }}
+            >
+              <div className="form-group">
+                <label className="form-label">Goal Title (Optional)</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  placeholder="e.g. Monthly Transport Budget"
+                  value={goalForm.title}
+                  onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Category (Optional - Leave blank for Overall)</label>
+                <select
+                  className="form-input"
+                  value={goalForm.categoryId}
+                  onChange={(e) => setGoalForm({ ...goalForm, categoryId: e.target.value })}
+                >
+                  <option value="">All Categories (Overall Target)</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Target Limit (kg CO₂e) *</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  value={goalForm.targetLimitKgCo2}
+                  onChange={(e) => setGoalForm({ ...goalForm, targetLimitKgCo2: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Start Date *</label>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={goalForm.startDate}
+                    onChange={(e) => setGoalForm({ ...goalForm, startDate: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">End Date *</label>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={goalForm.endDate}
+                    onChange={(e) => setGoalForm({ ...goalForm, endDate: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <button type="submit" className="btn-submit">
+                  Save Goal
+                </button>
+                <button type="button" className="btn-google" onClick={() => setShowGoalModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT GOAL MODAL */}
+      {editingGoal && (
+        <div className="modal-overlay" onClick={() => setEditingGoal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Edit Monthly Carbon Target</h3>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const payload = {
+                    title: editGoalForm.title || undefined,
+                    categoryId: editGoalForm.categoryId ? Number(editGoalForm.categoryId) : undefined,
+                    targetLimitKgCo2: Number(editGoalForm.targetLimitKgCo2),
+                    startDate: editGoalForm.startDate,
+                    endDate: editGoalForm.endDate,
+                  };
+                  await goalApi.updateGoal(token, editingGoal.id, payload);
+                  setSuccess('Goal updated successfully!');
+                  setEditingGoal(null);
+                  fetchGoals();
+                  fetchAnalytics();
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+              className="auth-form"
+              style={{ marginTop: '1rem' }}
+            >
+              <div className="form-group">
+                <label className="form-label">Goal Title</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  value={editGoalForm.title}
+                  onChange={(e) => setEditGoalForm({ ...editGoalForm, title: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Category</label>
+                <select
+                  className="form-input"
+                  value={editGoalForm.categoryId}
+                  onChange={(e) => setEditGoalForm({ ...editGoalForm, categoryId: e.target.value })}
+                >
+                  <option value="">All Categories (Overall Target)</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Target Limit (kg CO₂e) *</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  value={editGoalForm.targetLimitKgCo2}
+                  onChange={(e) => setEditGoalForm({ ...editGoalForm, targetLimitKgCo2: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Start Date *</label>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={editGoalForm.startDate}
+                    onChange={(e) => setEditGoalForm({ ...editGoalForm, startDate: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">End Date *</label>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={editGoalForm.endDate}
+                    onChange={(e) => setEditGoalForm({ ...editGoalForm, endDate: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <button type="submit" className="btn-submit">
+                  Update Goal
+                </button>
+                <button type="button" className="btn-google" onClick={() => setEditingGoal(null)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Edit Entry Modal */}
       {editModalLog && (

@@ -393,3 +393,110 @@ export const userApi = {
     return handleResponse(response);
   },
 };
+
+/**
+ * Goals API
+ */
+export const goalApi = {
+  createGoal: async (token, data) => {
+    const response = await fetch(`${API_BASE_URL}/user/goals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  getUserGoals: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/user/goals`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse(response);
+  },
+
+  updateGoal: async (token, id, data) => {
+    const response = await fetch(`${API_BASE_URL}/user/goals/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  deleteGoal: async (token, id) => {
+    const response = await fetch(`${API_BASE_URL}/user/goals/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse(response);
+  },
+};
+
+/**
+ * Analytics & Recommendations API
+ */
+export const analyticsApi = {
+  getTopActivities: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/user/analytics/top-activities`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse(response);
+  },
+
+  getAlerts: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/user/analytics/alerts`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse(response);
+  },
+};
+
+/**
+ * Articles & Sustainability Content API
+ */
+export const articleApi = {
+  getPublishedArticles: async (category) => {
+    const params = category ? `?category=${encodeURIComponent(category)}` : '';
+    const response = await fetch(`${API_BASE_URL}/user/articles${params}`);
+    return handleResponse(response);
+  },
+
+  getArticleById: async (id) => {
+    const response = await fetch(`${API_BASE_URL}/user/articles/${id}`);
+    return handleResponse(response);
+  },
+
+  adminGetArticles: async (token, { page = 0, size = 10 } = {}) => {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    const response = await fetch(`${API_BASE_URL}/admin/articles?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse(response);
+  },
+
+  adminCreateArticle: async (token, data) => {
+    const response = await fetch(`${API_BASE_URL}/admin/articles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  adminUpdateArticle: async (token, id, data) => {
+    const response = await fetch(`${API_BASE_URL}/admin/articles/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  adminDeleteArticle: async (token, id) => {
+    const response = await fetch(`${API_BASE_URL}/admin/articles/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse(response);
+  },
+};
