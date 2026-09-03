@@ -6,6 +6,8 @@ package com.infosys.carbonfootprint.enums;
 public enum GoalStatus {
     ACTIVE,
     COMPLETED,
+    ACHIEVED,
+    EXCEEDED,
     FAILED,
     CANCELLED
 }

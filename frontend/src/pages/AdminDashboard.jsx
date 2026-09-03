@@ -5,15 +5,19 @@ import AdminCategories from './admin/AdminCategories';
 import AdminActivityTypes from './admin/AdminActivityTypes';
 import AdminEmissionFactors from './admin/AdminEmissionFactors';
 import AdminActivityLogs from './admin/AdminActivityLogs';
+import AdminArticles from './admin/AdminArticles';
+import AdminAnalyticsCharts from '../components/AdminAnalyticsCharts';
 
 const STATUS_TABS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 const PAGE_SIZES = [10, 50, 100];
 const MAIN_NAVS = [
+  { id: 'overview', label: 'Executive Overview', icon: 'dashboard' },
   { id: 'users', label: 'User Management', icon: 'users' },
   { id: 'categories', label: 'Activity Categories', icon: 'category' },
   { id: 'activityTypes', label: 'Activity Types', icon: 'type' },
   { id: 'emissionFactors', label: 'Emission Factors', icon: 'factor' },
   { id: 'activityLogs', label: 'Activity Logs', icon: 'log' },
+  { id: 'articles', label: 'Articles CMS', icon: 'article' },
 ];
 
 export default function AdminDashboard() {
@@ -22,10 +26,10 @@ export default function AdminDashboard() {
 
   // Sync active main tab navigation with URL search params (?tab=...)
   const tabParam = searchParams.get('tab');
-  const activeNav = MAIN_NAVS.some((n) => n.id === tabParam) ? tabParam : 'users';
+  const activeNav = MAIN_NAVS.some((n) => n.id === tabParam) ? tabParam : 'overview';
 
   const handleNavChange = (navId) => {
-    if (navId === 'users') {
+    if (navId === 'overview') {
       setSearchParams({});
     } else {
       setSearchParams({ tab: navId });
@@ -96,6 +100,39 @@ export default function AdminDashboard() {
     rejected: 0,
   });
 
+  // Macro ESG Platform Counters
+  const [macroStats, setMacroStats] = useState({
+    totalEmissions: 0,
+    totalLogs: 0,
+    activeCategories: 0,
+    activeFactors: 0,
+  });
+
+  const fetchMacroStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [logsRes, catsRes, factorsRes] = await Promise.all([
+        adminApi.getActivityLogs(token, { page: 0, size: 1000 }),
+        adminApi.getCategories(token, { page: 0, size: 100 }),
+        adminApi.getEmissionFactors(token, { page: 0, size: 100 }),
+      ]);
+
+      const logs = logsRes?.content || (Array.isArray(logsRes) ? logsRes : []);
+      const totalEmissionKg = logs.reduce((sum, item) => sum + Number(item.totalEmission || item.kgCo2e || 0), 0);
+      const cats = catsRes?.content || (Array.isArray(catsRes) ? catsRes : []);
+      const factors = factorsRes?.content || (Array.isArray(factorsRes) ? factorsRes : []);
+
+      setMacroStats({
+        totalEmissions: Math.round(totalEmissionKg * 10) / 10,
+        totalLogs: logsRes?.totalElements ?? logs.length,
+        activeCategories: catsRes?.totalElements ?? cats.length,
+        activeFactors: factorsRes?.totalElements ?? factors.length,
+      });
+    } catch (err) {
+      console.error('Failed to fetch macro stats:', err);
+    }
+  }, [token]);
+
   // Track action loading per user ID
   const [actionLoading, setActionLoading] = useState({});
 
@@ -147,7 +184,7 @@ export default function AdminDashboard() {
       setTotalPages(data.totalPages || 0);
       setTotalElements(data.totalElements || 0);
 
-      // Fetch status counts for material stat cards
+      // Fetch status counts for material stat cards & analytics charts
       const [pendingRes, approvedRes, rejectedRes, allRes] = await Promise.all([
         adminApi.getUsers(token, { status: 'PENDING', page: 0, size: 1 }),
         adminApi.getUsers(token, { status: 'APPROVED', page: 0, size: 1 }),
@@ -169,10 +206,13 @@ export default function AdminDashboard() {
   }, [token, statusFilter, currentPage, pageSize]);
 
   useEffect(() => {
-    if (activeNav === 'users') {
+    if (activeNav === 'overview') {
+      fetchMacroStats();
+      fetchUsers();
+    } else if (activeNav === 'users') {
       fetchUsers();
     }
-  }, [fetchUsers, activeNav]);
+  }, [fetchUsers, fetchMacroStats, activeNav]);
 
   const handleStatusChange = (status) => {
     setStatusFilter(status);
@@ -311,6 +351,14 @@ export default function AdminDashboard() {
               onClick={() => handleNavChange(nav.id)}
             >
               <div className="mat-nav-icon">
+                {nav.icon === 'dashboard' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="7" height="9" rx="1" />
+                    <rect x="14" y="3" width="7" height="5" rx="1" />
+                    <rect x="14" y="12" width="7" height="9" rx="1" />
+                    <rect x="3" y="16" width="7" height="5" rx="1" />
+                  </svg>
+                )}
                 {nav.icon === 'users' && (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -335,6 +383,21 @@ export default function AdminDashboard() {
                 {nav.icon === 'factor' && (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                )}
+                {nav.icon === 'log' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                )}
+                {nav.icon === 'article' && (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
                   </svg>
                 )}
               </div>
@@ -404,6 +467,68 @@ export default function AdminDashboard() {
           )}
           {activeNav === 'emissionFactors' && <AdminEmissionFactors token={token} />}
           {activeNav === 'activityLogs' && <AdminActivityLogs token={token} />}
+          {activeNav === 'articles' && <AdminArticles />}
+
+          {activeNav === 'overview' && (
+            <>
+              {/* ===== MACRO ESG KPI CARDS ===== */}
+              <div className="mat-stats-grid">
+                <div className="mat-stat-card card-green" style={{ cursor: 'default' }}>
+                  <div className="mat-stat-icon" style={{ background: 'linear-gradient(195deg, #10B981, #059669)' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H8l5-7v4h3l-5 7z" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Platform Carbon Footprint</span>
+                    <h3>{macroStats.totalEmissions.toLocaleString()} <small style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94A3B8' }}>kg CO₂e</small></h3>
+                  </div>
+                </div>
+
+                <div className="mat-stat-card card-blue" style={{ cursor: 'pointer' }} onClick={() => handleNavChange('activityLogs')}>
+                  <div className="mat-stat-icon" style={{ background: 'linear-gradient(195deg, #3B82F6, #1D4ED8)' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Total Activities Logged</span>
+                    <h3>{macroStats.totalLogs.toLocaleString()} <small style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94A3B8' }}>logs</small></h3>
+                  </div>
+                </div>
+
+                <div className="mat-stat-card card-orange" style={{ cursor: 'pointer' }} onClick={() => handleNavChange('categories')}>
+                  <div className="mat-stat-icon" style={{ background: 'linear-gradient(195deg, #F59E0B, #D97706)' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="14" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Active Activity Sectors</span>
+                    <h3>{macroStats.activeCategories} <small style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94A3B8' }}>categories</small></h3>
+                  </div>
+                </div>
+
+                <div className="mat-stat-card card-purple" style={{ cursor: 'pointer' }} onClick={() => handleNavChange('emissionFactors')}>
+                  <div className="mat-stat-icon" style={{ background: 'linear-gradient(195deg, #8B5CF6, #6D28D9)' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                  </div>
+                  <div className="mat-stat-details">
+                    <span>Emission Factors Active</span>
+                    <h3>{macroStats.activeFactors} <small style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94A3B8' }}>factors</small></h3>
+                  </div>
+                </div>
+              </div>
+
+              {/* ===== ADMIN EXECUTIVE ANALYTICS CHARTS ===== */}
+              <AdminAnalyticsCharts stats={stats} token={token} />
+            </>
+          )}
 
           {activeNav === 'users' && (
             <>

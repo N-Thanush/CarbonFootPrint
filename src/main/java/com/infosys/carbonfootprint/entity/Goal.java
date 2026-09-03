@@ -28,13 +28,24 @@ public class Goal {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** Target reduction percentage (e.g., 20.0 for 20%) */
-    @Column(nullable = false)
-    private Double targetReductionPercent;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private ActivityCategory category;
 
-    /** Baseline carbon footprint in kg CO₂ (calculated at goal creation) */
+    @Column(length = 150)
+    private String title;
+
+    /** Target emission limit in kg CO₂e for period */
     @Column(nullable = false)
-    private Double baselineKgCo2;
+    private Double targetLimitKgCo2;
+
+    /** Target reduction percentage (optional, e.g., 20.0 for 20%) */
+    @Builder.Default
+    private Double targetReductionPercent = 0.0;
+
+    /** Baseline carbon footprint in kg CO₂ (optional) */
+    @Builder.Default
+    private Double baselineKgCo2 = 0.0;
 
     @Column(nullable = false)
     private LocalDate startDate;

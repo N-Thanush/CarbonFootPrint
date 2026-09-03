@@ -5,5 +5,6 @@ package com.infosys.carbonfootprint.enums;
  */
 public enum AuthProvider {
     LOCAL,
-    GOOGLE
+    GOOGLE,
+    GITHUB
 }

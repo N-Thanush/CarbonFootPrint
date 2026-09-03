@@ -65,6 +65,7 @@ public class SecurityConfig {
                                                 .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/set-password", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/upload-document", "/api/auth/documents/**").permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/").permitAll()
                                                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                                                .requestMatchers(HttpMethod.GET, "/api/user/articles/**").permitAll()
 
                                                 // Admin-only endpoints
                                                 .requestMatchers("/api/admin/**").hasRole("ADMIN")

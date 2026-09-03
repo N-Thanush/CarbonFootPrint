@@ -2701,6 +2701,11 @@ textarea.reg-floating-input + .reg-floating-label.floated {
   flex-direction: column;
   padding: 1.5rem 1rem;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .mat-sidebar-header {

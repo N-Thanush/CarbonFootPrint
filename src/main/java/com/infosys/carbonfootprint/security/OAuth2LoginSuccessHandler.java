@@ -42,40 +42,54 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
         String email = oAuth2User.getAttribute("email");
         String name = oAuth2User.getAttribute("name");
+        String login = oAuth2User.getAttribute("login"); // for GitHub
         String picture = oAuth2User.getAttribute("picture");
+        if (picture == null) {
+            picture = oAuth2User.getAttribute("avatar_url"); // for GitHub
+        }
 
-        logger.info("Google OAuth2 login attempt for email: {}", email);
+        if (name == null && login != null) {
+            name = login;
+        }
+
+        logger.info("OAuth2 login attempt for email/login: {} / {}", email, login);
+
+        if (email == null && login != null) {
+            email = login.toLowerCase() + "@github.user";
+        }
 
         if (email == null) {
             getRedirectStrategy().sendRedirect(request, response, "http://localhost:5173/login?error=email_not_provided");
             return;
         }
 
-        Optional<User> userOptional = userRepository.findByEmail(email);
+        Optional<User> userOptional = userRepository.findByEmail(email.toLowerCase());
         User user;
+
+        AuthProvider provider = login != null ? AuthProvider.GITHUB : AuthProvider.GOOGLE;
 
         if (userOptional.isPresent()) {
             user = userOptional.get();
+            // Automatically ensure status is APPROVED for Google & GitHub OAuth users
+            if (user.getAccountStatus() != AccountStatus.APPROVED) {
+                user.setAccountStatus(AccountStatus.APPROVED);
+                user = userRepository.save(user);
+            }
         } else {
-            // Auto-register Google OAuth2 user
+            // Register OAuth user directly with APPROVED status for instant access
             user = User.builder()
-                    .fullName(name != null ? name : "Google User")
+                    .fullName(name != null ? name : "OAuth User")
                     .email(email.toLowerCase())
                     .profilePictureUrl(picture)
                     .documentType(DocumentType.PAN)
-                    .documentNumber("GOOGLE" + System.currentTimeMillis() % 100000)
+                    .documentNumber("OAUTH" + System.currentTimeMillis() % 100000)
                     .role(Role.USER)
-                    .accountStatus(AccountStatus.PENDING)
-                    .authProvider(AuthProvider.GOOGLE)
+                    .accountStatus(AccountStatus.APPROVED)
+                    .authProvider(provider)
                     .build();
 
             user = userRepository.save(user);
-            logger.info("Auto-registered new user via Google OAuth2: {} (PENDING approval)", email);
-        }
-
-        if (user.getAccountStatus() == AccountStatus.PENDING) {
-            getRedirectStrategy().sendRedirect(request, response, "http://localhost:5173/login?status=pending");
-            return;
+            logger.info("Registered and auto-approved new user via OAuth2 ({}) : {}", provider, email);
         }
 
         if (user.getAccountStatus() == AccountStatus.REJECTED) {
